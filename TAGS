@@ -1,0 +1,43 @@
+
+Setup.hs,15
+main main1,2
+
+src/Main.hs,1212
+module Main Main16,17
+main main26,27
+main main27,28
+type System System49,50
+type System w w49,50
+instance instance51,52
+type V2 V254,55
+data StorageType StorageType56,57
+data StorageType   = FieldOf FieldOf56,57
+data StorageType   = FieldOf | WorldOf WorldOf56,57
+data StorageType   = FieldOf | WorldOf | QueryOf QueryOf56,57
+data StorageType   = FieldOf | WorldOf | QueryOf | SetterOfSetterOf56,57
+data ComponentType ComponentType57,58
+data ComponentType = Field Field57,58
+data ComponentType = Field   | UniqueUnique57,58
+type family family59,60
+type family Component Component59,60
+class Default Default71,72
+class Default Default71,72
+  def def72,73
+data Entity Entity84,85
+data Entity f = EntityEntity84,85
+  { pos pos85,86
+  , vel vel86,87
+getEntityImpl getEntityImpl96,97
+getEntityImpl getEntityImpl97,98
+getEntity getEntity102,103
+getEntity getEntity103,104
+setEntity setEntity107,108
+setEntity setEntity108,109
+getComponent getComponent117,118
+fieldsToSetter fieldsToSetter123,124
+nextEntity nextEntity126,127
+nextEntity nextEntity127,128
+newEntity newEntity133,134
+newEntity newEntity134,135
+rmap rmap140,141
+rmap rmap141,142
