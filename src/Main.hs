@@ -1,20 +1,6 @@
 {-# LANGUAGE DataKinds                    #-}
-{-# LANGUAGE DefaultSignatures            #-}
-{-# LANGUAGE DeriveAnyClass               #-}
 {-# LANGUAGE DeriveGeneric                #-}
-{-# LANGUAGE FlexibleContexts             #-}
-{-# LANGUAGE FlexibleInstances            #-}
-{-# LANGUAGE KindSignatures               #-}
-{-# LANGUAGE MultiParamTypeClasses        #-}
-{-# LANGUAGE RecordWildCards              #-}
-{-# LANGUAGE ScopedTypeVariables          #-}
-{-# LANGUAGE StandaloneDeriving           #-}
-{-# LANGUAGE TupleSections                #-}
-{-# LANGUAGE TypeApplications             #-}
 {-# LANGUAGE TypeFamilies                 #-}
-{-# LANGUAGE TypeOperators                #-}
-{-# LANGUAGE UndecidableInstances         #-}
-{-# LANGUAGE ViewPatterns                 #-}
 
 module Main where
 
@@ -38,18 +24,17 @@ main = do
       }
 
     let
-      step e = do
-        pos' <- pos e
-        vel' <- vel e
+      step = do
+        pos' <- get pos
+        vel' <- get vel
         pure $ defEntity'
           { pos = Set $ pos' + vel'
           }
     emap step
     emap step
 
-    efor $ \i e -> do
-      acked <- ack e
-      posd <- pos e
+    efor $ \i -> do
+      with ack
       pure $ show i
 
   print e

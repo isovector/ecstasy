@@ -4,7 +4,9 @@
 
 module Data.Ecstasy.Types where
 
-import           Control.Monad.Trans.State
+import           Control.Monad.Trans.Maybe (MaybeT)
+import           Control.Monad.Trans.Reader (ReaderT)
+import           Control.Monad.Trans.State (StateT)
 import           Data.Functor.Identity (Identity)
 import           Data.IntMap (IntMap)
 import qualified Data.IntMap as I
@@ -20,6 +22,8 @@ instance Show Ent where
 
 type SystemT w = StateT (Int, w 'WorldOf)
 type System  w = SystemT w Identity
+
+type QueryT w m = ReaderT (w 'FieldOf) (MaybeT m)
 
 
 data StorageType

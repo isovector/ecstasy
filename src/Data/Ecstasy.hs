@@ -13,12 +13,17 @@ module Data.Ecstasy
   ) where
 
 import           Control.Arrow (first, second)
-import           Control.Monad.Trans.State (get, modify, gets, evalStateT)
+import           Control.Monad (guard, mzero, void)
+import           Control.Monad.Trans.Class (lift)
+import           Control.Monad.Trans.Maybe (runMaybeT)
+import           Control.Monad.Trans.Reader (runReaderT, ask)
+import           Control.Monad.Trans.State (modify, gets, evalStateT)
+import qualified Control.Monad.Trans.State as S
 import           Data.Ecstasy.Deriving
 import qualified Data.Ecstasy.Types as T
 import           Data.Ecstasy.Types hiding (unEnt)
 import           Data.Foldable (for_)
-import           Data.Maybe (catMaybes)
+import           Data.Maybe (catMaybes, isJust, isNothing)
 import           Data.Traversable (for)
 import           GHC.Generics
 
@@ -119,7 +124,7 @@ nextEntity
     :: Monad m
     => SystemT a m Ent
 nextEntity = do
-  (e, _) <- get
+  (e, _) <- S.get
   modify . first . const $ e + 1
   pure $ Ent e
 
@@ -134,29 +139,37 @@ newEntity cs = do
   pure e
 
 
+runQueryT
+  :: QueryT world m a
+  -> world 'FieldOf
+  -> m (Maybe a)
+runQueryT = (runMaybeT .) . runReaderT
+
+
 emap
     :: ( World world
        , Monad m
        )
-    => (world 'FieldOf -> Maybe (world 'SetterOf))
+    => QueryT world m (world 'SetterOf)
     -> SystemT world m ()
 emap f = do
-  (es, _) <- get
+  (es, _) <- S.get
   for_ [0 .. es - 1] $ \(Ent -> e) -> do
     cs <- getEntity e
-    for_ (f cs) $ setEntity e
+    sets <- lift $ runQueryT f cs
+    for_ sets $ setEntity e
 
 efor
     :: ( World world
        , Monad m
        )
-    => (Ent -> world 'FieldOf -> Maybe a)
+    => (Ent -> QueryT world m a)
     -> SystemT world m [a]
 efor f = do
-  (es, _) <- get
+  (es, _) <- S.get
   fmap catMaybes $ for [0 .. es - 1] $ \(Ent -> e) -> do
     cs <- getEntity e
-    pure $ f e cs
+    lift $ runQueryT (f e) cs
 
 
 runSystemT
@@ -171,4 +184,31 @@ getWorld
     :: Monad m
     => SystemT world m (world 'WorldOf)
 getWorld = gets snd
+
+
+with
+    :: Monad m
+    => (world 'FieldOf -> Maybe a)
+    -> QueryT world m ()
+with = void . get
+
+
+
+without
+    :: Monad m
+    => (world 'FieldOf -> Maybe a)
+    -> QueryT world m ()
+without f = do
+  e <- ask
+  maybe (pure ()) (const mzero) $ f e
+
+
+
+get
+    :: Monad m
+    => (world 'FieldOf -> Maybe a)
+    -> QueryT world m a
+get f = do
+  e <- ask
+  maybe mzero pure $ f e
 
