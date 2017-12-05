@@ -33,11 +33,17 @@ data ComponentType
   | Unique
 
 
+data Update a
+  = Keep
+  | Unset
+  | Set a
+
+
 type family Component (s :: StorageType)
                       (c :: ComponentType)
                       (a :: *) :: * where
   Component 'FieldOf  c      a = Maybe a
-  Component 'SetterOf c      a = Maybe (Maybe a)
+  Component 'SetterOf c      a = Update a
 
   Component 'WorldOf 'Field  a = IntMap a
   Component 'WorldOf 'Unique a = Maybe (Int, a)

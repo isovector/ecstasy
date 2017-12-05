@@ -5,6 +5,7 @@
 
 module Data.Ecstasy.Deriving where
 
+import           Data.Ecstasy.Types (Update (..))
 import           Data.IntMap (IntMap)
 import qualified Data.IntMap as I
 import           GHC.Generics
@@ -15,6 +16,15 @@ class GConvertSetter a b where
 
 instance GConvertSetter (K1 i a) (K1 i' (Maybe a)) where
   gConvertSetter (K1 a) = K1 $ Just a
+  {-# INLINE gConvertSetter #-}
+
+instance GConvertSetter (K1 i a) (K1 i' (Update a)) where
+  gConvertSetter (K1 a) = K1 $ Set a
+  {-# INLINE gConvertSetter #-}
+
+instance GConvertSetter (K1 i (Maybe a)) (K1 i' (Update a)) where
+  gConvertSetter (K1 (Just a)) = K1 $ Set a
+  gConvertSetter (K1 Nothing)  = K1 Unset
   {-# INLINE gConvertSetter #-}
 
 instance GConvertSetter f f' => GConvertSetter (M1 i c f) (M1 i' c' f') where
@@ -50,18 +60,19 @@ instance (GGetEntity a c , GGetEntity b d) => GGetEntity (a :*: b) (c :*: d) whe
 class GSetEntity a b where
   gSetEntity :: a x -> Int -> b x -> b x
 
-instance GSetEntity (K1 i (Maybe (Maybe a))) (K1 i' (Maybe (Int, a))) where
-  gSetEntity (K1 (Just (Just a))) e _ = K1 $ Just (e, a)
-  gSetEntity (K1 (Just Nothing)) e (K1 (Just (e', b))) =
+instance GSetEntity (K1 i (Update a)) (K1 i' (Maybe (Int, a))) where
+  gSetEntity (K1 (Set a)) e _ = K1 $ Just (e, a)
+  gSetEntity (K1 Unset) e (K1 (Just (e', b))) =
     if e == e'
        then K1 Nothing
        else K1 $ Just (e', b)
   gSetEntity _  _ (K1 b) = K1 b
   {-# INLINE gSetEntity #-}
 
-instance GSetEntity (K1 i (Maybe (Maybe a))) (K1 i' (IntMap a)) where
-  gSetEntity (K1 Nothing)  e (K1 b) = K1 b
-  gSetEntity (K1 (Just a)) e (K1 b) = K1 $ I.alter (const a) e b
+instance GSetEntity (K1 i (Update a)) (K1 i' (IntMap a)) where
+  gSetEntity (K1 Keep) _ (K1 b) = K1 b
+  gSetEntity (K1 (Set a)) e (K1 b) = K1 $ I.alter (const $ Just a) e b
+  gSetEntity (K1 Unset) e (K1 b) = K1 $ I.alter (const Nothing) e b
   {-# INLINE gSetEntity #-}
 
 instance GSetEntity f f' => GSetEntity (M1 i c f) (M1 i' c' f') where
@@ -87,6 +98,10 @@ instance GDefault U1 where
 
 instance GDefault (K1 i (Maybe c)) where
   gdef = K1 Nothing
+  {-# INLINE gdef #-}
+
+instance GDefault (K1 i (Update c)) where
+  gdef = K1 Keep
   {-# INLINE gdef #-}
 
 instance GDefault (K1 i (IntMap c)) where

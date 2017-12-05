@@ -42,7 +42,7 @@ main = do
         pos' <- pos e
         vel' <- vel e
         pure $ defEntity'
-          { pos = Just $ Just $ pos' + vel'
+          { pos = Set $ pos' + vel'
           }
     emap step
     emap step
