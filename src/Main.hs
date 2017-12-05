@@ -22,56 +22,45 @@ import Data.Ecstasy
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 
--- import Data.Functor.Identity (Identity)
--- import Debug.Trace
--- import           Control.Arrow (first, second)
--- import           Control.Monad.Trans.State
--- import           Control.Monad (void)
--- import           Data.Foldable (for_)
--- import           Data.IntMap (IntMap)
--- import qualified Data.IntMap as I
--- import           GHC.Generics
-
-
--- main :: IO ()
--- main = pure ()
 
 main :: IO ()
 main = do
   e <- runSystemT defWorld $ do
-        void $ newEntity $ defEntity
-            { pos = Just 0
-            , vel = Just 1
-            , ack = Just True
-            }
+    void $ newEntity $ defEntity
+        { pos = Just 0
+        , vel = Just 1
+        , ack = Just True
+        }
 
-        void $ newEntity $ defEntity
-          { pos = Just 0
-          , ack = Just False
+    void $ newEntity $ defEntity
+      { pos = Just 0
+      , ack = Just False
+      }
+
+    let
+      step e = do
+        pos' <- pos e
+        vel' <- vel e
+        pure $ defEntity'
+          { pos = Just $ Just $ pos' + vel'
           }
+    emap step
+    emap step
 
-        let
-          step e = do
-            pos' <- pos e
-            vel' <- vel e
-            pure $ defEntity'
-              { pos = Just $ Just $ pos' + vel'
-              }
-        emap step
-        emap step
-
-        emapM $ \e -> do
-          acked <- ack e
-          posd <- pos e
-          pure acked
+    efor $ \i e -> do
+      acked <- ack e
+      posd <- pos e
+      pure $ show i
 
   print e
 --   print $ pos e
 --   print $ vel e
 --   print $ ack e
 
+
 data Entity f = Entity
-  { pos :: Component f 'Field Int
-  , vel :: Component f 'Field Int
+  { pos :: Component f 'Field  Int
+  , vel :: Component f 'Field  Int
   , ack :: Component f 'Unique Bool
   } deriving (Generic)
+

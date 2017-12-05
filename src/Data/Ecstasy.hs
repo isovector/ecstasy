@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE TupleSections        #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns         #-}
 
 module Data.Ecstasy
   ( module Data.Ecstasy
@@ -11,20 +12,22 @@ module Data.Ecstasy
   , Generic
   ) where
 
-import Control.Arrow (first, second)
-import Control.Monad.Trans.State (get, modify, gets, evalStateT)
-import Data.Ecstasy.Deriving
-import Data.Ecstasy.Types
-import Data.Foldable (for_)
-import Data.Traversable (for)
-import GHC.Generics
+import           Control.Arrow (first, second)
+import           Control.Monad.Trans.State (get, modify, gets, evalStateT)
+import           Data.Ecstasy.Deriving
+import qualified Data.Ecstasy.Types as T
+import           Data.Ecstasy.Types hiding (unEnt)
+import           Data.Foldable (for_)
+import           Data.Maybe (catMaybes)
+import           Data.Traversable (for)
+import           GHC.Generics
 
 
 class World world where
   getEntity
       :: ( Monad m
          )
-      => Int
+      => Ent
       -> SystemT world m (world 'FieldOf)
   default getEntity
       :: ( GGetEntity (Rep (world 'WorldOf))
@@ -33,15 +36,15 @@ class World world where
          , Generic (world 'WorldOf)
          , Monad m
          )
-      => Int
+      => Ent
       -> SystemT world m (world 'FieldOf)
   getEntity e = do
     w <- gets snd
-    pure $ to $ gGetEntity (from w) e
+    pure . to . gGetEntity (from w) $ T.unEnt e
 
   setEntity
       :: Monad m
-      => Int
+      => Ent
       -> world 'SetterOf
       -> SystemT world m ()
   default setEntity
@@ -51,12 +54,12 @@ class World world where
          , Generic (world 'SetterOf)
          , Monad m
          )
-      => Int
+      => Ent
       -> world 'SetterOf
       -> SystemT world m ()
   setEntity e s = do
     w <- gets snd
-    let x = to $ gSetEntity (from s) e $ from w
+    let x = to . gSetEntity (from s) (T.unEnt e) $ from w
     modify . second $ const x
 
   convertSetter
@@ -114,17 +117,17 @@ instance ( Generic (world 'SetterOf)
 
 nextEntity
     :: Monad m
-    => SystemT a m Int
+    => SystemT a m Ent
 nextEntity = do
   (e, _) <- get
   modify . first . const $ e + 1
-  pure e
+  pure $ Ent e
 
 
 newEntity
     :: (World world, Monad m)
     => world 'FieldOf
-    -> SystemT world m Int
+    -> SystemT world m Ent
 newEntity cs = do
   e <- nextEntity
   setEntity e $ convertSetter cs
@@ -139,21 +142,21 @@ emap
     -> SystemT world m ()
 emap f = do
   (es, _) <- get
-  for_ [0 .. es - 1] $ \e -> do
+  for_ [0 .. es - 1] $ \(Ent -> e) -> do
     cs <- getEntity e
     for_ (f cs) $ setEntity e
 
-emapM
+efor
     :: ( World world
        , Monad m
        )
-    => (world 'FieldOf -> a)
+    => (Ent -> world 'FieldOf -> Maybe a)
     -> SystemT world m [a]
-emapM f = do
+efor f = do
   (es, _) <- get
-  for [0 .. es - 1] $ \e -> do
+  fmap catMaybes $ for [0 .. es - 1] $ \(Ent -> e) -> do
     cs <- getEntity e
-    pure $ f cs
+    pure $ f e cs
 
 
 runSystemT

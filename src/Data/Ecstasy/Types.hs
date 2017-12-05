@@ -10,6 +10,14 @@ import           Data.IntMap (IntMap)
 import qualified Data.IntMap as I
 
 
+newtype Ent = Ent { unEnt :: Int }
+  deriving (Eq, Ord)
+
+instance Show Ent where
+  show (Ent e) = "Ent " ++ show e
+
+
+
 type SystemT w = StateT (Int, w 'WorldOf)
 type System  w = SystemT w Identity
 
@@ -17,7 +25,6 @@ type System  w = SystemT w Identity
 data StorageType
   = FieldOf
   | WorldOf
-  | QueryOf
   | SetterOf
 
 
@@ -29,11 +36,9 @@ data ComponentType
 type family Component (s :: StorageType)
                       (c :: ComponentType)
                       (a :: *) :: * where
-  Component 'FieldOf c       a = Maybe a
+  Component 'FieldOf  c      a = Maybe a
   Component 'SetterOf c      a = Maybe (Maybe a)
 
   Component 'WorldOf 'Field  a = IntMap a
   Component 'WorldOf 'Unique a = Maybe (Int, a)
-
-  Component 'QueryOf c       a = Maybe Bool
 
