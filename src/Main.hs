@@ -1,17 +1,20 @@
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DefaultSignatures   #-}
-{-# LANGUAGE DeriveAnyClass      #-}
-{-# LANGUAGE DeriveGeneric       #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE KindSignatures      #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving  #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE TypeFamilies        #-}
-{-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE ViewPatterns        #-}
+{-# LANGUAGE ConstraintKinds              #-}
+{-# LANGUAGE DataKinds                    #-}
+{-# LANGUAGE DefaultSignatures            #-}
+{-# LANGUAGE DeriveAnyClass               #-}
+{-# LANGUAGE DeriveGeneric                #-}
+{-# LANGUAGE FlexibleContexts             #-}
+{-# LANGUAGE FlexibleInstances            #-}
+{-# LANGUAGE KindSignatures               #-}
+{-# LANGUAGE MultiParamTypeClasses        #-}
+{-# LANGUAGE RecordWildCards              #-}
+{-# LANGUAGE ScopedTypeVariables          #-}
+{-# LANGUAGE StandaloneDeriving           #-}
+{-# LANGUAGE TypeApplications             #-}
+{-# LANGUAGE TypeFamilies                 #-}
+{-# LANGUAGE TypeOperators                #-}
+{-# LANGUAGE UndecidableInstances         #-}
+{-# LANGUAGE ViewPatterns                 #-}
 {-# OPTIONS_GHC -fno-warn-missing-methods #-}
 
 module Main where
@@ -31,30 +34,42 @@ setter :: Entity 'SetterOf
 setter = def
 
 
+-- main :: IO ()
+-- main = pure ()
+
 main :: IO ()
 main = do
-  let init = (0, Entity def def)
+  let init = (0, def)
 
   let (_, e) = flip execState init $ do
-        void $ newEntity $ ent
-          { pos = Just (0, 0)
-          , vel = Just (1, -2)
-          }
+        ex <- nextEntity
+        setEntity ex $
+          ent
+            { pos = Just $ Just (0, 0)
+            , vel = Just $ Just (1, -2)
+            }
 
-        void $ newEntity $ ent
-          { pos = Just (0, 0)
-          }
+        setEntity ex $
+          ent
+            { pos = Nothing
+            , vel = Just $ Just (4, -2)
+            }
 
-        let step e = do
-              pos' <- pos e
-              vel' <- vel e
-              pure $ setter
-                { pos = Just $ Just $ pos' + vel'
-                }
-        rmap step
-        rmap step
+--         void $ newEntity $ ent
+--           { pos = Just (0, 0)
+--           }
+
+--         let step e = do
+--               pos' <- pos e
+--               vel' <- vel e
+--               pure $ setter
+--                 { pos = Just $ Just $ pos' + vel'
+--                 }
+--         rmap step
+--         rmap step
 
   print $ pos e
+  print $ vel e
 
 type System w = State (Int, w 'WorldOf)
 
@@ -78,17 +93,29 @@ type family Component (s :: StorageType)
   Component 'QueryOf c       a = Maybe Bool
 
 
-class Default a where
-  def :: a
+def :: forall a. (Generic a, GDefault (Rep a a)) => a
+def = to $ gdef @(Rep a a)
 
-  -- default def :: (Generic a, GDefault a) => a
-  -- def = gdef
+class GDefault p where
+  gdef :: p
 
-instance Default (Maybe a) where
-  def = Nothing
+instance GDefault (U1 a) where
+  gdef = U1
 
-instance Default (IntMap a) where
-  def = I.empty
+instance {-# OVERLAPPING #-} GDefault (K1 i (Maybe c) p) where
+  gdef = K1 Nothing
+
+instance {-# OVERLAPPING #-} GDefault (K1 i (IntMap c) p) where
+  gdef = K1 I.empty
+
+instance GDefault c => GDefault (K1 i c p) where
+  gdef = K1 gdef
+
+instance GDefault (f p) => GDefault (M1 i c f p) where
+  gdef = M1 gdef
+
+instance (GDefault (a p), GDefault (b p)) => GDefault ((a :*: b) p) where
+  gdef = gdef :*: gdef
 
 
 data Entity f = Entity
@@ -96,26 +123,57 @@ data Entity f = Entity
   , vel :: Component f 'Field V2
   } deriving (Generic)
 
-instance Default (Entity 'FieldOf) where
-  def = Entity def def
 
-instance Default (Entity 'SetterOf) where
-  def = Entity def def
+class GGetEntityImpl e where
+  ggetEntityImpl :: e 'WorldOf -> Int -> e 'FieldOf
 
+class (Generic (world 'SetterOf), Generic (world 'WorldOf)) => World (world :: StorageType -> *) where
+  -- getEntityImpl :: world 'WorldOf -> Int -> world 'FieldOf
+  -- fieldsToSetter :: world 'FieldOf -> world 'SetterOf
 
-getEntityImpl :: Entity 'WorldOf -> Int -> Entity 'FieldOf
-getEntityImpl world e =
-  Entity (getComponent (pos world) e)
-         (getComponent (vel world) e)
+instance (Generic (world 'SetterOf), Generic (world 'WorldOf)) => World (world :: StorageType -> *)
 
 
-getEntity :: Int -> System Entity (Entity 'FieldOf)
-getEntity e = do
-  (_, es) <- get
-  pure $ getEntityImpl es e
 
-setEntity :: Int -> Entity 'SetterOf -> System Entity ()
-setEntity e fs = do
+
+-- getEntityImpl :: Entity 'WorldOf -> Int -> Entity 'FieldOf
+-- getEntityImpl world e =
+--   Entity (getComponent (pos world) e)
+--          (getComponent (vel world) e)
+
+
+-- getEntity :: World world => Int -> System world (world 'FieldOf)
+-- getEntity e = do
+--   (_, es) <- get
+--   pure $ getEntityImpl es e
+
+
+class GSetEntity a b where
+  gSetEntity :: a x -> Int -> b x -> b x
+
+instance GSetEntity (K1 i (Maybe (Maybe a))) (K1 i' (IntMap a)) where
+  gSetEntity (K1 Nothing)  e (K1 b) = K1 b
+  gSetEntity (K1 (Just a)) e (K1 b) = K1 $ I.alter (const a) e b
+
+instance GSetEntity f f' => GSetEntity (M1 i c f) (M1 i' c' f') where
+  gSetEntity (M1 a) e (M1 b) = M1 $ gSetEntity a e b
+
+instance (GSetEntity a c , GSetEntity b d) => GSetEntity (a :*: b) (c :*: d) where
+  gSetEntity (a :*: b) e (c :*: d) = gSetEntity a e c :*: gSetEntity b e d
+
+type HasSetEntity world = (Generic (world 'SetterOf), Generic (world 'WorldOf), GSetEntity (Rep (world 'SetterOf)) (Rep (world 'WorldOf)))
+
+setEntity :: HasSetEntity world => Int -> world 'SetterOf -> System world ()
+setEntity e s = do
+  w <- gets snd
+  let x = to $ gSetEntity (from s) e $ from w
+  modify $ second $ const x
+  pure ()
+
+
+
+setEntity' :: Int -> Entity 'SetterOf -> System Entity ()
+setEntity' e fs = do
   for_ (pos fs) $ \p -> modify . second $ \w -> w { pos = I.alter (const p) e $ pos w }
   for_ (vel fs) $ \p -> modify . second $ \w -> w { vel = I.alter (const p) e $ vel w }
 
@@ -127,11 +185,6 @@ getComponent
 getComponent m e = I.lookup e m
 
 
-fieldsToSetter
-    :: Entity 'FieldOf
-    -> Entity 'SetterOf
-fieldsToSetter Entity{..} = Entity (Just pos) (Just vel)
-
 
 nextEntity :: System a Int
 nextEntity = do
@@ -140,17 +193,17 @@ nextEntity = do
   pure e
 
 
-newEntity :: Entity 'FieldOf -> System Entity Int
-newEntity cs = do
-  e <- nextEntity
-  setEntity e $ fieldsToSetter cs
-  pure e
+-- newEntity :: (HasSetEntity world, World world) => world 'FieldOf -> System world Int
+-- newEntity cs = do
+--   e <- nextEntity
+--   setEntity e $ fieldsToSetter cs
+--   pure e
 
 
-rmap :: (Entity 'FieldOf -> Maybe (Entity 'SetterOf)) -> System Entity ()
-rmap f = do
-  (es, _) <- get
-  for_ [0 .. es - 1] $ \e -> do
-    cs <- getEntity e
-    for_ (f cs) $ setEntity e
+-- rmap :: (HasSetEntity world, World world) => (world 'FieldOf -> Maybe (world 'SetterOf)) -> System world ()
+-- rmap f = do
+--   (es, _) <- get
+--   for_ [0 .. es - 1] $ \e -> do
+--     cs <- getEntity e
+--     for_ (f cs) $ setEntity e
 
