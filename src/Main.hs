@@ -19,6 +19,7 @@
 
 module Main where
 
+import Debug.Trace
 import           Control.Arrow (first, second)
 import           Control.Monad.State
 import           Data.Foldable (for_)
@@ -27,46 +28,32 @@ import qualified Data.IntMap as I
 import           GHC.Generics
 
 
-ent :: Entity 'FieldOf
-ent = def
-
-setter :: Entity 'SetterOf
-setter = def
-
-
 -- main :: IO ()
 -- main = pure ()
 
 main :: IO ()
 main = do
-  let init = (0, def)
+  let init = (0, defWorld)
 
   let (_, e) = flip execState init $ do
-        ex <- nextEntity
-        setEntity ex $
-          ent
-            { pos = Just $ Just (0, 0)
-            , vel = Just $ Just (1, -2)
+        void $ newEntity $ defEntity
+            { pos = Just (0, 0)
+            , vel = Just (1, -2)
             }
 
-        setEntity ex $
-          ent
-            { pos = Nothing
-            , vel = Just $ Just (4, -2)
-            }
+        void $ newEntity $ defEntity
+          { pos = Just (0, 0)
+          }
 
---         void $ newEntity $ ent
---           { pos = Just (0, 0)
---           }
-
---         let step e = do
---               pos' <- pos e
---               vel' <- vel e
---               pure $ setter
---                 { pos = Just $ Just $ pos' + vel'
---                 }
---         rmap step
---         rmap step
+        let
+          step e = do
+            pos' <- pos e
+            vel' <- vel e
+            pure $ defEntity'
+              { pos = Just $ Just $ pos' + vel'
+              }
+        rmap step
+        rmap step
 
   print $ pos e
   print $ vel e
@@ -93,28 +80,25 @@ type family Component (s :: StorageType)
   Component 'QueryOf c       a = Maybe Bool
 
 
-def :: forall a. (Generic a, GDefault (Rep a a)) => a
-def = to $ gdef @(Rep a a)
+def :: forall a. (Generic a, GDefault (Rep a)) => a
+def = to $ gdef @(Rep a)
 
-class GDefault p where
-  gdef :: p
+class GDefault f where
+  gdef :: f a
 
-instance GDefault (U1 a) where
+instance GDefault U1 where
   gdef = U1
 
-instance {-# OVERLAPPING #-} GDefault (K1 i (Maybe c) p) where
+instance GDefault (K1 i (Maybe c)) where
   gdef = K1 Nothing
 
-instance {-# OVERLAPPING #-} GDefault (K1 i (IntMap c) p) where
+instance GDefault (K1 i (IntMap c)) where
   gdef = K1 I.empty
 
-instance GDefault c => GDefault (K1 i c p) where
-  gdef = K1 gdef
-
-instance GDefault (f p) => GDefault (M1 i c f p) where
+instance GDefault f => GDefault (M1 i c f) where
   gdef = M1 gdef
 
-instance (GDefault (a p), GDefault (b p)) => GDefault ((a :*: b) p) where
+instance (GDefault a, GDefault b) => GDefault (a :*: b) where
   gdef = gdef :*: gdef
 
 
@@ -124,28 +108,122 @@ data Entity f = Entity
   } deriving (Generic)
 
 
-class GGetEntityImpl e where
-  ggetEntityImpl :: e 'WorldOf -> Int -> e 'FieldOf
+class World (world :: StorageType -> *) where
+  getEntity
+      :: World world
+      => Int
+      -> System world (world 'FieldOf)
+  default getEntity
+      :: ( GGetEntity (Rep (world 'WorldOf))
+                      (Rep (world 'FieldOf))
+         , Generic (world 'FieldOf)
+         , Generic (world 'WorldOf)
+         )
+      => Int
+      -> System world (world 'FieldOf)
+  getEntity e = do
+    w <- gets snd
+    pure $ to $ gGetEntity (from w) e
 
-class (Generic (world 'SetterOf), Generic (world 'WorldOf)) => World (world :: StorageType -> *) where
-  -- getEntityImpl :: world 'WorldOf -> Int -> world 'FieldOf
-  -- fieldsToSetter :: world 'FieldOf -> world 'SetterOf
+  setEntity
+      :: Int
+      -> world 'SetterOf
+      -> System world ()
+  default setEntity
+      :: ( GSetEntity (Rep (world 'SetterOf))
+                      (Rep (world 'WorldOf))
+         , Generic (world 'WorldOf)
+         , Generic (world 'SetterOf)
+         )
+      => Int
+      -> world 'SetterOf
+      -> System world ()
+  setEntity e s = do
+    w <- gets snd
+    let x = to $ gSetEntity (from s) e $ from w
+    modify . second $ const x
 
-instance (Generic (world 'SetterOf), Generic (world 'WorldOf)) => World (world :: StorageType -> *)
+  convertSetter
+      :: world 'FieldOf
+      -> world 'SetterOf
+  default convertSetter
+      :: ( GConvertSetter (Rep (world 'FieldOf))
+                          (Rep (world 'SetterOf))
+         , Generic (world 'FieldOf)
+         , Generic (world 'SetterOf)
+         )
+      => world 'FieldOf
+      -> world 'SetterOf
+  convertSetter = to . gConvertSetter . from
+
+  defEntity :: world 'FieldOf
+  default defEntity
+      :: ( Generic (world 'FieldOf)
+         , GDefault (Rep (world 'FieldOf))
+         )
+      => world 'FieldOf
+  defEntity = def
+
+
+  defEntity' :: world 'SetterOf
+  default defEntity'
+      :: ( Generic (world 'SetterOf)
+         , GDefault (Rep (world 'SetterOf))
+         )
+      => world 'SetterOf
+  defEntity' = def
+
+
+  defWorld :: world 'WorldOf
+  default defWorld
+      :: ( Generic (world 'WorldOf)
+         , GDefault (Rep (world 'WorldOf))
+         )
+      => world 'WorldOf
+  defWorld = def
+
+
+instance ( Generic (world 'SetterOf)
+         , Generic (world 'WorldOf)
+         , Generic (world 'FieldOf)
+         , GSetEntity (Rep (world 'SetterOf))
+                      (Rep (world 'WorldOf))
+         , GGetEntity (Rep (world 'WorldOf))
+                      (Rep (world 'FieldOf))
+         , GConvertSetter (Rep (world 'FieldOf))
+                          (Rep (world 'SetterOf))
+         , GDefault (Rep (world 'FieldOf))
+         , GDefault (Rep (world 'SetterOf))
+         , GDefault (Rep (world 'WorldOf))
+         ) => World (world :: StorageType -> *)
 
 
 
 
--- getEntityImpl :: Entity 'WorldOf -> Int -> Entity 'FieldOf
--- getEntityImpl world e =
---   Entity (getComponent (pos world) e)
---          (getComponent (vel world) e)
+class GConvertSetter a b where
+  gConvertSetter :: a x -> b x
+
+instance GConvertSetter (K1 i a) (K1 i' (Maybe a)) where
+  gConvertSetter (K1 a) = K1 $ Just a
+
+instance GConvertSetter f f' => GConvertSetter (M1 i c f) (M1 i' c' f') where
+  gConvertSetter (M1 a) = M1 $ gConvertSetter a
+
+instance (GConvertSetter a c , GConvertSetter b d) => GConvertSetter (a :*: b) (c :*: d) where
+  gConvertSetter (a :*: b) = gConvertSetter a :*: gConvertSetter b
 
 
--- getEntity :: World world => Int -> System world (world 'FieldOf)
--- getEntity e = do
---   (_, es) <- get
---   pure $ getEntityImpl es e
+class GGetEntity a b where
+  gGetEntity :: a x -> Int -> b x
+
+instance GGetEntity (K1 i (IntMap a)) (K1 i' (Maybe a)) where
+  gGetEntity (K1 a) e = K1 $ I.lookup e $ a
+
+instance GGetEntity f f' => GGetEntity (M1 i c f) (M1 i' c' f') where
+  gGetEntity (M1 a) e = M1 $ gGetEntity a e
+
+instance (GGetEntity a c , GGetEntity b d) => GGetEntity (a :*: b) (c :*: d) where
+  gGetEntity (a :*: b) e = gGetEntity a e :*: gGetEntity b e
 
 
 class GSetEntity a b where
@@ -161,49 +239,26 @@ instance GSetEntity f f' => GSetEntity (M1 i c f) (M1 i' c' f') where
 instance (GSetEntity a c , GSetEntity b d) => GSetEntity (a :*: b) (c :*: d) where
   gSetEntity (a :*: b) e (c :*: d) = gSetEntity a e c :*: gSetEntity b e d
 
-type HasSetEntity world = (Generic (world 'SetterOf), Generic (world 'WorldOf), GSetEntity (Rep (world 'SetterOf)) (Rep (world 'WorldOf)))
-
-setEntity :: HasSetEntity world => Int -> world 'SetterOf -> System world ()
-setEntity e s = do
-  w <- gets snd
-  let x = to $ gSetEntity (from s) e $ from w
-  modify $ second $ const x
-  pure ()
-
-
-
-setEntity' :: Int -> Entity 'SetterOf -> System Entity ()
-setEntity' e fs = do
-  for_ (pos fs) $ \p -> modify . second $ \w -> w { pos = I.alter (const p) e $ pos w }
-  for_ (vel fs) $ \p -> modify . second $ \w -> w { vel = I.alter (const p) e $ vel w }
-
-
-getComponent
-    :: Component 'WorldOf 'Field a
-    -> Int
-    -> Component 'FieldOf 'Field a
-getComponent m e = I.lookup e m
-
-
 
 nextEntity :: System a Int
 nextEntity = do
-  ((+1) -> e, _) <- get
-  modify $ first $ const e
+  (e, _) <- get
+  modify $ first $ const $ e + 1
   pure e
 
 
--- newEntity :: (HasSetEntity world, World world) => world 'FieldOf -> System world Int
--- newEntity cs = do
---   e <- nextEntity
---   setEntity e $ fieldsToSetter cs
---   pure e
+newEntity :: World world => world 'FieldOf -> System world Int
+newEntity cs = do
+  e <- nextEntity
+  setEntity e $ convertSetter cs
+  pure e
 
 
--- rmap :: (HasSetEntity world, World world) => (world 'FieldOf -> Maybe (world 'SetterOf)) -> System world ()
--- rmap f = do
---   (es, _) <- get
---   for_ [0 .. es - 1] $ \e -> do
---     cs <- getEntity e
---     for_ (f cs) $ setEntity e
+
+rmap :: World world => (world 'FieldOf -> Maybe (world 'SetterOf)) -> System world ()
+rmap f = do
+  (es, _) <- get
+  for_ [0 .. es - 1] $ \e -> do
+    cs <- getEntity e
+    for_ (f cs) $ setEntity e
 
