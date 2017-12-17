@@ -16,8 +16,9 @@ extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
 
 library
-  -- exposed-modules:
-  -- other-modules:
+  exposed-modules: Data.Ecstasy
+  other-modules:   Data.Ecstasy.Deriving
+                 , Data.Ecstasy.Types
   -- other-extensions:
   build-depends:       base >=4.9 && <4.10, containers, mtl, transformers
   hs-source-dirs:      src

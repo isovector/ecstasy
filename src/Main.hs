@@ -4,9 +4,11 @@
 
 module Main where
 
+import Control.Lens
 import Data.Ecstasy
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
+import Data.Data.Lens (upon)
 
 
 main :: IO ()
@@ -48,4 +50,5 @@ data Entity f = Entity
   , vel :: Component f 'Field  Int
   , ack :: Component f 'Unique Bool
   } deriving (Generic)
+
 
