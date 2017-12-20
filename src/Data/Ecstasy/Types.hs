@@ -9,7 +9,6 @@ import           Control.Monad.Trans.Reader (ReaderT)
 import           Control.Monad.Trans.State (StateT)
 import           Data.Functor.Identity (Identity)
 import           Data.IntMap (IntMap)
-import qualified Data.IntMap as I
 
 
 newtype Ent = Ent { unEnt :: Int }

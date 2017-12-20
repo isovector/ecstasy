@@ -13,7 +13,7 @@ module Data.Ecstasy
   ) where
 
 import           Control.Arrow (first, second)
-import           Control.Monad (guard, mzero, void)
+import           Control.Monad (mzero, void)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Maybe (runMaybeT)
 import           Control.Monad.Trans.Reader (runReaderT, ask)
@@ -23,7 +23,7 @@ import           Data.Ecstasy.Deriving
 import qualified Data.Ecstasy.Types as T
 import           Data.Ecstasy.Types hiding (unEnt)
 import           Data.Foldable (for_)
-import           Data.Maybe (catMaybes, isJust, isNothing)
+import           Data.Maybe (catMaybes)
 import           Data.Traversable (for)
 import           GHC.Generics
 
@@ -139,11 +139,11 @@ newEntity cs = do
   pure e
 
 
-runQueryT
+unQueryT
   :: QueryT world m a
   -> world 'FieldOf
   -> m (Maybe a)
-runQueryT = (runMaybeT .) . runReaderT
+unQueryT = (runMaybeT .) . runReaderT
 
 
 emap
@@ -156,7 +156,7 @@ emap f = do
   (es, _) <- S.get
   for_ [0 .. es - 1] $ \(Ent -> e) -> do
     cs <- getEntity e
-    sets <- lift $ runQueryT f cs
+    sets <- lift $ unQueryT f cs
     for_ sets $ setEntity e
 
 efor
@@ -169,7 +169,19 @@ efor f = do
   (es, _) <- S.get
   fmap catMaybes $ for [0 .. es - 1] $ \(Ent -> e) -> do
     cs <- getEntity e
-    lift $ runQueryT (f e) cs
+    lift $ unQueryT (f e) cs
+
+
+runQueryT
+    :: ( World world
+       , Monad m
+       )
+    => Ent
+    -> QueryT world m a
+    -> SystemT world m (Maybe a)
+runQueryT e qt = do
+  cs <- getEntity e
+  lift $ unQueryT qt cs
 
 
 runSystemT
