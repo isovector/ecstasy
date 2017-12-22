@@ -40,6 +40,7 @@ data Update a
   = Keep
   | Unset
   | Set a
+  deriving (Eq, Ord, Show, Read)
 
 
 type family Component (s :: StorageType)

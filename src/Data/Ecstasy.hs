@@ -224,3 +224,10 @@ get f = do
   e <- ask
   maybe mzero pure $ f e
 
+
+getMaybe
+    :: Monad m
+    => (world 'FieldOf -> Maybe a)
+    -> QueryT g world m (Maybe a)
+getMaybe f = asks $ f . snd
+
