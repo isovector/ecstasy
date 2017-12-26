@@ -23,12 +23,13 @@ import           Data.Ecstasy.Deriving
 import qualified Data.Ecstasy.Types as T
 import           Data.Ecstasy.Types hiding (unEnt)
 import           Data.Foldable (for_)
+import           Data.Functor.Identity (runIdentity)
 import           Data.Maybe (catMaybes)
 import           Data.Traversable (for)
 import           GHC.Generics
 
 
-class World world where
+class HasWorld world where
   getEntity
       :: ( Monad m
          )
@@ -117,7 +118,7 @@ instance ( Generic (world 'SetterOf)
          , GDefault (Rep (world 'FieldOf))
          , GDefault (Rep (world 'SetterOf))
          , GDefault (Rep (world 'WorldOf))
-         ) => World world
+         ) => HasWorld world
 
 
 nextEntity
@@ -130,7 +131,7 @@ nextEntity = do
 
 
 newEntity
-    :: (World world, Monad m)
+    :: (HasWorld world, Monad m)
     => world 'FieldOf
     -> SystemT world m Ent
 newEntity cs = do
@@ -147,7 +148,7 @@ unQueryT = (runMaybeT .) . runReaderT
 
 
 emap
-    :: ( World world
+    :: ( HasWorld world
        , Monad m
        )
     => QueryT world m (world 'SetterOf)
@@ -160,7 +161,7 @@ emap f = do
     for_ sets $ setEntity e
 
 efor
-    :: ( World world
+    :: ( HasWorld world
        , Monad m
        )
     => (Ent -> QueryT world m a)
@@ -173,7 +174,7 @@ efor f = do
 
 
 runQueryT
-    :: ( World world
+    :: ( HasWorld world
        , Monad m
        )
     => Ent
@@ -192,6 +193,13 @@ runSystemT
 runSystemT = flip evalStateT . (0,)
 
 
+runSystem
+    :: world 'WorldOf
+    -> System world a
+    -> a
+runSystem = (runIdentity .) . runSystemT
+
+
 getWorld
     :: Monad m
     => SystemT world m (world 'WorldOf)
@@ -205,7 +213,6 @@ with
 with = void . get
 
 
-
 without
     :: Monad m
     => (world 'FieldOf -> Maybe a)
@@ -213,7 +220,6 @@ without
 without f = do
   e <- ask
   maybe (pure ()) (const mzero) $ f e
-
 
 
 get
@@ -228,6 +234,6 @@ get f = do
 getMaybe
     :: Monad m
     => (world 'FieldOf -> Maybe a)
-    -> QueryT g world m (Maybe a)
-getMaybe f = asks $ f . snd
+    -> QueryT world m (Maybe a)
+getMaybe f = fmap f ask
 

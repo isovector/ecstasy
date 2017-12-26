@@ -4,11 +4,9 @@
 
 module Main where
 
-import Control.Lens
 import Data.Ecstasy
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
-import Data.Data.Lens (upon)
 
 
 main :: IO ()

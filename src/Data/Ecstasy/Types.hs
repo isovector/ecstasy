@@ -29,11 +29,13 @@ data StorageType
   = FieldOf
   | WorldOf
   | SetterOf
+  deriving (Eq, Ord, Show, Read, Enum, Bounded)
 
 
 data ComponentType
   = Field
   | Unique
+  deriving (Eq, Ord, Show, Read, Enum, Bounded)
 
 
 data Update a
