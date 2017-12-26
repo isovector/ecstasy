@@ -29,7 +29,13 @@ import           Data.Traversable (for)
 import           GHC.Generics
 
 
+------------------------------------------------------------------------------
+-- | This class provides all of the functionality necessary to manipulate the
+-- ECS.
 class HasWorld world where
+
+  ----------------------------------------------------------------------------
+  -- | Fetches an entity from the world given its 'Ent'.
   getEntity
       :: ( Monad m
          )
@@ -48,6 +54,8 @@ class HasWorld world where
     w <- gets snd
     pure . to . gGetEntity (from w) $ T.unEnt e
 
+  ----------------------------------------------------------------------------
+  -- | Updates an 'Ent' in the world given its setter.
   setEntity
       :: Monad m
       => Ent
@@ -68,6 +76,9 @@ class HasWorld world where
     let x = to . gSetEntity (from s) (T.unEnt e) $ from w
     modify . second $ const x
 
+  ----------------------------------------------------------------------------
+  -- | Transforms an entity into a setter to transform the default entity into
+  -- the given one. Used by 'newEntity'.
   convertSetter
       :: world 'FieldOf
       -> world 'SetterOf
@@ -81,6 +92,8 @@ class HasWorld world where
       -> world 'SetterOf
   convertSetter = to . gConvertSetter . from
 
+  ----------------------------------------------------------------------------
+  -- | The default entity, owning no components.
   defEntity :: world 'FieldOf
   default defEntity
       :: ( Generic (world 'FieldOf)
@@ -89,6 +102,8 @@ class HasWorld world where
       => world 'FieldOf
   defEntity = def
 
+  ----------------------------------------------------------------------------
+  -- | The default setter, which keeps all components with their previous value.
   defEntity' :: world 'SetterOf
   default defEntity'
       :: ( Generic (world 'SetterOf)
@@ -97,6 +112,8 @@ class HasWorld world where
       => world 'SetterOf
   defEntity' = def
 
+  ----------------------------------------------------------------------------
+  -- | The default world, which contains only empty containers.
   defWorld :: world 'WorldOf
   default defWorld
       :: ( Generic (world 'WorldOf)
@@ -121,6 +138,8 @@ instance ( Generic (world 'SetterOf)
          ) => HasWorld world
 
 
+------------------------------------------------------------------------------
+-- | Retrieve a unique 'Ent'.
 nextEntity
     :: Monad m
     => SystemT a m Ent
@@ -130,6 +149,8 @@ nextEntity = do
   pure $ Ent e
 
 
+------------------------------------------------------------------------------
+-- | Create a new entity.
 newEntity
     :: (HasWorld world, Monad m)
     => world 'FieldOf
@@ -140,6 +161,8 @@ newEntity cs = do
   pure e
 
 
+------------------------------------------------------------------------------
+-- | Evaluate a 'QueryT'.
 unQueryT
   :: QueryT world m a
   -> world 'FieldOf
@@ -147,6 +170,8 @@ unQueryT
 unQueryT = (runMaybeT .) . runReaderT
 
 
+------------------------------------------------------------------------------
+-- | Map a 'QueryT' transformation over all entites that match it.
 emap
     :: ( HasWorld world
        , Monad m
@@ -160,6 +185,10 @@ emap f = do
     sets <- lift $ unQueryT f cs
     for_ sets $ setEntity e
 
+
+------------------------------------------------------------------------------
+-- | Collect the results of a monadic computation over every entity matching
+-- a 'QueryT'.
 efor
     :: ( HasWorld world
        , Monad m
@@ -173,6 +202,8 @@ efor f = do
     lift $ unQueryT (f e) cs
 
 
+------------------------------------------------------------------------------
+-- | Run a 'QueryT' over a particular 'Ent'.
 runQueryT
     :: ( HasWorld world
        , Monad m
@@ -185,6 +216,8 @@ runQueryT e qt = do
   lift $ unQueryT qt cs
 
 
+------------------------------------------------------------------------------
+-- | Evaluate a 'SystemT'.
 runSystemT
     :: Monad m
     => world 'WorldOf
@@ -193,6 +226,8 @@ runSystemT
 runSystemT = flip evalStateT . (0,)
 
 
+------------------------------------------------------------------------------
+-- | Evaluate a 'System'.
 runSystem
     :: world 'WorldOf
     -> System world a
@@ -200,12 +235,16 @@ runSystem
 runSystem = (runIdentity .) . runSystemT
 
 
+------------------------------------------------------------------------------
+-- | Get the world.
 getWorld
     :: Monad m
     => SystemT world m (world 'WorldOf)
 getWorld = gets snd
 
 
+------------------------------------------------------------------------------
+-- | Only evaluate this 'QueryT' for entities which have the given component.
 with
     :: Monad m
     => (world 'FieldOf -> Maybe a)
@@ -213,6 +252,9 @@ with
 with = void . get
 
 
+------------------------------------------------------------------------------
+-- | Only evaluate this 'QueryT' for entities which do not have the given
+-- component.
 without
     :: Monad m
     => (world 'FieldOf -> Maybe a)
@@ -222,6 +264,8 @@ without f = do
   maybe (pure ()) (const mzero) $ f e
 
 
+------------------------------------------------------------------------------
+-- | Get the value of a component, failing the 'QueryT' if it isn't present.
 get
     :: Monad m
     => (world 'FieldOf -> Maybe a)
@@ -231,6 +275,8 @@ get f = do
   maybe mzero pure $ f e
 
 
+------------------------------------------------------------------------------
+-- | Attempt to get the value of a component.
 getMaybe
     :: Monad m
     => (world 'FieldOf -> Maybe a)
