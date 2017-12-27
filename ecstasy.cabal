@@ -3,17 +3,35 @@
 
 name:                ecstasy
 version:             0.1.0.0
--- synopsis:
--- description:
+synopsis:
+  A GHC.Generics based entity component system.
+
+description:
+  Ecstasy is an entity-component system for Haskell. It's inspired by
+  <https://hackage.haskell.org/package/apecs apecs>, but makes the design
+  decision to focus on being idiomatic rather than being fast. Maybe. I haven't
+  actually benchmarked it.
+  .
+  We achieve being idiomatic by using 'GHC.Generics' and tricky type families
+  to derive performant data stores given only a record of the desired
+  components.
+
 license:             BSD3
 license-file:        LICENSE
 author:              Sandy Maguire
 maintainer:          sandy@sandymaguire.me
+homepage:            http://github.com/isovector/ecstasy/
+bug-reports:         http://github.com/isovector/ecstasy/issues
 -- copyright:
 category:            Game
 build-type:          Simple
 extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
+tested-with:         GHC == 7.8.4, GHC == 7.10.3, GHC == 8.0.2, GHC == 8.2.1
+
+source-repository head
+  type: git
+  location: https://github.com/isovector/ecstasy.git
 
 library
   exposed-modules: Data.Ecstasy

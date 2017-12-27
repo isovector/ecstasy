@@ -1,7 +1,8 @@
 # Ecstasy
 
-[![Build Status](https://travis-ci.org/isovector/ecstasy.svg?branch=master)](https://travis-ci.org/isovector/ecstasy)
+[![Build Status](https://travis-ci.org/isovector/ecstasy.svg?branch=master)](https://travis-ci.org/isovector/ecstasy) | [Hackage][hackage]
 
+[hackage]: https://hackage.haskell.org/package/ecstasy-0.1.0.0
 
 ## Dedication
 
