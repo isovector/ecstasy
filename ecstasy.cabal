@@ -37,7 +37,6 @@ library
   exposed-modules: Data.Ecstasy
   other-modules:   Data.Ecstasy.Deriving
                  , Data.Ecstasy.Types
-                 , Main
   -- other-extensions:
   build-depends:       base >=4.9 && <4.10, containers, mtl, transformers
   hs-source-dirs:      src
