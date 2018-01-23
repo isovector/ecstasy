@@ -26,6 +26,7 @@ import           Data.Foldable (for_)
 import           Data.Functor.Identity (runIdentity)
 import           Data.Maybe (catMaybes)
 import           Data.Traversable (for)
+import           Data.Tuple (swap)
 import           GHC.Generics
 
 
@@ -214,6 +215,17 @@ runQueryT
 runQueryT e qt = do
   cs <- getEntity e
   lift $ unQueryT qt cs
+
+
+------------------------------------------------------------------------------
+-- | Provides a resumable 'SystemT'. This is a pretty big hack until I come up
+-- with a better formalization for everything.
+yieldSystemT
+    :: Monad m
+    => SystemState world
+    -> SystemT world m a
+    -> m (SystemState world, a)
+yieldSystemT = (fmap swap .) . flip S.runStateT
 
 
 ------------------------------------------------------------------------------

@@ -20,10 +20,13 @@ instance Show Ent where
   show (Ent e) = "Ent " ++ show e
 
 
+------------------------------------------------------------------------------
+-- | The internal state of the 'SystemT' monad.
+type SystemState w = (Int, w 'WorldOf)
 
 ------------------------------------------------------------------------------
 -- | A monad transformer over an ECS given a world 'w'.
-type SystemT w = StateT (Int, w 'WorldOf)
+type SystemT w = StateT (SystemState w)
 
 ------------------------------------------------------------------------------
 -- | A monad over an ECS given a world 'w'.
