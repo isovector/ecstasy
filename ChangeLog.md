@@ -1,5 +1,9 @@
 # Revision history for ecstasy
 
+## 0.1.1.0  -- 2018-02-18
+
+* Added 'deleteEntity' (function) and 'delEntity' (QueryT setter).
+
 ## 0.1.0.1  -- 2018-02-14
 
 * Added 'yieldSystemT' for resuming a 'SystemT' computation later.

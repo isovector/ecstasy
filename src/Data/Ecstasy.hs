@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE TupleSections        #-}
+{-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns         #-}
 
@@ -98,30 +99,40 @@ class HasWorld world where
   defEntity :: world 'FieldOf
   default defEntity
       :: ( Generic (world 'FieldOf)
-         , GDefault (Rep (world 'FieldOf))
+         , GDefault 'True (Rep (world 'FieldOf))
          )
       => world 'FieldOf
-  defEntity = def
+  defEntity = def @'True
 
   ----------------------------------------------------------------------------
   -- | The default setter, which keeps all components with their previous value.
   defEntity' :: world 'SetterOf
   default defEntity'
       :: ( Generic (world 'SetterOf)
-         , GDefault (Rep (world 'SetterOf))
+         , GDefault 'True (Rep (world 'SetterOf))
          )
       => world 'SetterOf
-  defEntity' = def
+  defEntity' = def @'True
+
+  ----------------------------------------------------------------------------
+  -- | A setter which will delete the entity if its 'QueryT' matches.
+  delEntity :: world 'SetterOf
+  default delEntity
+      :: ( Generic (world 'SetterOf)
+         , GDefault 'False (Rep (world 'SetterOf))
+         )
+      => world 'SetterOf
+  delEntity = def @'False
 
   ----------------------------------------------------------------------------
   -- | The default world, which contains only empty containers.
   defWorld :: world 'WorldOf
   default defWorld
       :: ( Generic (world 'WorldOf)
-         , GDefault (Rep (world 'WorldOf))
+         , GDefault 'True (Rep (world 'WorldOf))
          )
       => world 'WorldOf
-  defWorld = def
+  defWorld = def @'True
 
 
 instance ( Generic (world 'SetterOf)
@@ -133,9 +144,10 @@ instance ( Generic (world 'SetterOf)
                       (Rep (world 'FieldOf))
          , GConvertSetter (Rep (world 'FieldOf))
                           (Rep (world 'SetterOf))
-         , GDefault (Rep (world 'FieldOf))
-         , GDefault (Rep (world 'SetterOf))
-         , GDefault (Rep (world 'WorldOf))
+         , GDefault 'True  (Rep (world 'FieldOf))
+         , GDefault 'False (Rep (world 'SetterOf))
+         , GDefault 'True  (Rep (world 'SetterOf))
+         , GDefault 'True  (Rep (world 'WorldOf))
          ) => HasWorld world
 
 
@@ -160,6 +172,15 @@ newEntity cs = do
   e <- nextEntity
   setEntity e $ convertSetter cs
   pure e
+
+
+------------------------------------------------------------------------------
+-- | Delete an entity.
+deleteEntity
+    :: (HasWorld world, Monad m)
+    => Ent
+    -> SystemT world m ()
+deleteEntity = flip setEntity delEntity
 
 
 ------------------------------------------------------------------------------

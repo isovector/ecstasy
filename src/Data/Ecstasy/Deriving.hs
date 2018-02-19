@@ -1,6 +1,11 @@
+{-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeOperators         #-}
 
 module Data.Ecstasy.Deriving where
@@ -84,35 +89,39 @@ instance (GSetEntity a c , GSetEntity b d) => GSetEntity (a :*: b) (c :*: d) whe
   {-# INLINE gSetEntity #-}
 
 
-def :: (Generic a, GDefault (Rep a)) => a
-def = to gdef
+def :: forall keep a. (Generic a, GDefault keep (Rep a)) => a
+def = to $ gdef @keep
 {-# INLINE def #-}
 
 
-class GDefault f where
+class GDefault (keep :: Bool) f where
   gdef :: f a
 
-instance GDefault U1 where
+instance GDefault keep U1 where
   gdef = U1
   {-# INLINE gdef #-}
 
-instance GDefault (K1 i (Maybe c)) where
+instance GDefault keep (K1 i (Maybe c)) where
   gdef = K1 Nothing
   {-# INLINE gdef #-}
 
-instance GDefault (K1 i (Update c)) where
+instance GDefault 'False (K1 i (Update c)) where
+  gdef = K1 Unset
+  {-# INLINE gdef #-}
+
+instance GDefault 'True (K1 i (Update c)) where
   gdef = K1 Keep
   {-# INLINE gdef #-}
 
-instance GDefault (K1 i (IntMap c)) where
+instance GDefault keep (K1 i (IntMap c)) where
   gdef = K1 I.empty
   {-# INLINE gdef #-}
 
-instance GDefault f => GDefault (M1 i c f) where
-  gdef = M1 gdef
+instance GDefault keep f => GDefault keep (M1 i c f) where
+  gdef = M1 $ gdef @keep
   {-# INLINE gdef #-}
 
-instance (GDefault a, GDefault b) => GDefault (a :*: b) where
-  gdef = gdef :*: gdef
+instance (GDefault keep a, GDefault keep b) => GDefault keep (a :*: b) where
+  gdef = gdef @keep :*: gdef @keep
   {-# INLINE gdef #-}
 
