@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds      #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeFamilies   #-}
+{-# OPTIONS_GHC -funbox-strict-fields #-}
 
 module Data.Ecstasy.Types where
 
@@ -59,7 +60,7 @@ data ComponentType
 data Update a
   = Keep   -- ^ Keep the current value.
   | Unset  -- ^ Delete the current value if it exists.
-  | Set {-# UNPACK #-} !a  -- ^ Set the current value.
+  | Set !a  -- ^ Set the current value.
   deriving (Eq, Ord, Show, Read)
 
 
