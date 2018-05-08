@@ -1,5 +1,7 @@
+{-# LANGUAGE AllowAmbiguousTypes        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE FunctionalDependencies     #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
@@ -22,6 +24,7 @@ import Control.Monad.Trans.State.Strict (StateT (..))
 import Control.Monad.Writer.Class (MonadWriter)
 import Data.Functor.Identity (Identity)
 import Data.IntMap.Strict (IntMap)
+import GHC.TypeLits (Symbol)
 
 
 ------------------------------------------------------------------------------
@@ -84,6 +87,13 @@ instance MonadReader r m => MonadReader r (QueryT w m) where
   local f = QueryT . runQueryT' . local f
 
 
+data VirtualWrapper (name :: Symbol) a = VirtualWrapper
+
+class VirtualAccess (name :: Symbol) m a | name -> a, name -> m where
+  vget :: Ent -> m (Maybe a)
+  vset :: Ent -> Update a -> m ()
+
+
 ------------------------------------------------------------------------------
 -- | Data kind used to parameterize the ECS record.
 data StorageType
@@ -98,9 +108,8 @@ data StorageType
 data ComponentType
   = Field      -- ^ This component can be owned by any entity.
   | Unique     -- ^ This component can be owned by only a single entity at a time.
-  -- | Virtual    -- ^ This component is owned by another system.
+  | Virtual Symbol   -- ^ This component is owned by another system.
   -- | Mandatory  -- ^ This component must exist.
-  deriving (Eq, Ord, Show, Read, Enum, Bounded)
 
 
 ------------------------------------------------------------------------------
@@ -122,5 +131,5 @@ type family Component (s :: StorageType)
 
   Component 'WorldOf 'Field  a  = IntMap a
   Component 'WorldOf 'Unique a  = Maybe (Int, a)
-  -- Component 'WorldOf 'Virtual a = ()
+  Component 'WorldOf ('Virtual name) a = VirtualWrapper name a
 

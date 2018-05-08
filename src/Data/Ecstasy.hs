@@ -1,11 +1,15 @@
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE DefaultSignatures    #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE TupleSections        #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE ViewPatterns         #-}
+{-# LANGUAGE AllowAmbiguousTypes    #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DefaultSignatures      #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE TupleSections          #-}
+{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE UndecidableInstances   #-}
+{-# LANGUAGE ViewPatterns           #-}
 
 module Data.Ecstasy
   ( module Data.Ecstasy
@@ -18,7 +22,7 @@ import           Control.Monad (mzero, void)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Maybe (runMaybeT)
 import           Control.Monad.Trans.Reader (runReaderT, asks)
-import           Control.Monad.Trans.State.Strict (modify, gets, evalStateT)
+import           Control.Monad.Trans.State.Strict (modify, get, gets, evalStateT)
 import qualified Control.Monad.Trans.State.Strict as S
 import           Data.Ecstasy.Deriving
 import qualified Data.Ecstasy.Types as T
@@ -34,38 +38,38 @@ import           GHC.Generics
 ------------------------------------------------------------------------------
 -- | This class provides all of the functionality necessary to manipulate the
 -- ECS.
-class HasWorld world where
+class HasWorld' world => HasWorld world m where
 
   ----------------------------------------------------------------------------
   -- | Fetches an entity from the world given its 'Ent'.
   getEntity
-      :: ( Monad m
-         )
+      :: Monad m
       => Ent
       -> SystemT world m (world 'FieldOf)
   default getEntity
-      :: ( GGetEntity (Rep (world 'WorldOf))
+      :: ( Monad m
+         , GGetEntity m
+                      (Rep (world 'WorldOf))
                       (Rep (world 'FieldOf))
          , Generic (world 'FieldOf)
          , Generic (world 'WorldOf)
-         , Monad m
          )
       => Ent
       -> SystemT world m (world 'FieldOf)
   getEntity e = do
     w <- SystemT $ gets snd
-    pure . to . gGetEntity (from w) $ T.unEnt e
+    lift . fmap to . gGetEntity @m (from w) $ T.unEnt e
   {-# INLINE getEntity #-}
 
   ----------------------------------------------------------------------------
   -- | Updates an 'Ent' in the world given its setter.
   setEntity
-      :: Monad m
-      => Ent
+      :: Ent
       -> world 'SetterOf
       -> SystemT world m ()
   default setEntity
-      :: ( GSetEntity (Rep (world 'SetterOf))
+      :: ( GSetEntity m
+                      (Rep (world 'SetterOf))
                       (Rep (world 'WorldOf))
          , Generic (world 'WorldOf)
          , Generic (world 'SetterOf)
@@ -76,10 +80,12 @@ class HasWorld world where
       -> SystemT world m ()
   setEntity e s = do
     w <- SystemT $ gets snd
-    let x = to . gSetEntity (from s) (T.unEnt e) $ from w
+    x <- lift . fmap to . gSetEntity (from s) (T.unEnt e) $ from w
     SystemT . modify . second $ const x
   {-# INLINE setEntity #-}
 
+
+class HasWorld' world where
   ----------------------------------------------------------------------------
   -- | Transforms an entity into a setter to transform the default entity into
   -- the given one. Used by 'newEntity'.
@@ -144,17 +150,33 @@ class HasWorld world where
 instance ( Generic (world 'SetterOf)
          , Generic (world 'WorldOf)
          , Generic (world 'FieldOf)
-         , GSetEntity (Rep (world 'SetterOf))
-                      (Rep (world 'WorldOf))
-         , GGetEntity (Rep (world 'WorldOf))
-                      (Rep (world 'FieldOf))
          , GConvertSetter (Rep (world 'FieldOf))
                           (Rep (world 'SetterOf))
          , GDefault 'True  (Rep (world 'FieldOf))
          , GDefault 'False (Rep (world 'SetterOf))
          , GDefault 'True  (Rep (world 'SetterOf))
          , GDefault 'True  (Rep (world 'WorldOf))
-         ) => HasWorld world
+         ) => HasWorld' world
+
+
+instance ( HasWorld' world
+         , Generic (world 'SetterOf)
+         , Generic (world 'WorldOf)
+         , Generic (world 'FieldOf)
+         , GConvertSetter (Rep (world 'FieldOf))
+                          (Rep (world 'SetterOf))
+         , GDefault 'True  (Rep (world 'FieldOf))
+         , GDefault 'False (Rep (world 'SetterOf))
+         , GDefault 'True  (Rep (world 'SetterOf))
+         , GDefault 'True  (Rep (world 'WorldOf))
+         , GSetEntity m
+                      (Rep (world 'SetterOf))
+                      (Rep (world 'WorldOf))
+         , GGetEntity m
+                      (Rep (world 'WorldOf))
+                      (Rep (world 'FieldOf))
+         , Monad m
+         ) => HasWorld world m
 
 
 ------------------------------------------------------------------------------
@@ -171,7 +193,7 @@ nextEntity = do
 ------------------------------------------------------------------------------
 -- | Create a new entity.
 newEntity
-    :: (HasWorld world, Monad m)
+    :: (HasWorld world m, Monad m)
     => world 'FieldOf
     -> SystemT world m Ent
 newEntity cs = do
@@ -183,7 +205,7 @@ newEntity cs = do
 ------------------------------------------------------------------------------
 -- | Delete an entity.
 deleteEntity
-    :: (HasWorld world, Monad m)
+    :: (HasWorld world m, Monad m)
     => Ent
     -> SystemT world m ()
 deleteEntity = flip setEntity delEntity
@@ -202,14 +224,15 @@ unQueryT q e f = runMaybeT $ flip runReaderT (e, f) $ runQueryT' q
 ------------------------------------------------------------------------------
 -- | Map a 'QueryT' transformation over all entites that match it.
 emap
-    :: ( HasWorld world
+    :: ( HasWorld world m
        , Monad m
        )
-    => QueryT world m (world 'SetterOf)
+    => EntTarget world m
+    -> QueryT world m (world 'SetterOf)
     -> SystemT world m ()
-emap f = do
-  (es, _) <- SystemT S.get
-  for_ [0 .. es - 1] $ \(Ent -> e) -> do
+emap t f = do
+  es <- t
+  for_ es $ \e -> do
     cs <- getEntity e
     sets <- lift $ unQueryT f e cs
     for_ sets $ setEntity e
@@ -219,22 +242,42 @@ emap f = do
 -- | Collect the results of a monadic computation over every entity matching
 -- a 'QueryT'.
 efor
-    :: ( HasWorld world
+    :: ( HasWorld world m
        , Monad m
        )
-    => (Ent -> QueryT world m a)
+    => EntTarget world m
+    -> QueryT world m a
     -> SystemT world m [a]
-efor f = do
-  (es, _) <- SystemT S.get
-  fmap catMaybes $ for [0 .. es - 1] $ \(Ent -> e) -> do
+efor t f = do
+  es <- t
+  fmap catMaybes $ for es $ \e -> do
     cs <- getEntity e
-    lift $ unQueryT (f e) e cs
+    lift $ unQueryT f e cs
+
+
+------------------------------------------------------------------------------
+-- | Do an 'emap' and an 'efor' at the same time.
+eover
+    :: ( HasWorld world m
+       , Monad m
+       )
+    => EntTarget world m
+    -> QueryT world m (a, world 'SetterOf)
+    -> SystemT world m [a]
+eover t f = do
+  es <- t
+  fmap catMaybes $ for es $ \e -> do
+    cs <- getEntity e
+    mset <- lift $ unQueryT f e cs
+    for mset $ \(a, setter) -> do
+      setEntity e setter
+      pure a
 
 
 ------------------------------------------------------------------------------
 -- | Run a 'QueryT' over a particular 'Ent'.
 runQueryT
-    :: ( HasWorld world
+    :: ( HasWorld world m
        , Monad m
        )
     => Ent
@@ -289,7 +332,7 @@ with
     :: Monad m
     => (world 'FieldOf -> Maybe a)
     -> QueryT world m ()
-with = void . get
+with = void . query
 {-# INLINE with #-}
 
 
@@ -307,29 +350,80 @@ without f = do
 
 ------------------------------------------------------------------------------
 -- | Get the value of a component, failing the 'QueryT' if it isn't present.
-get
+query
     :: Monad m
     => (world 'FieldOf -> Maybe a)
     -> QueryT world m a
-get f = do
+query f = do
   e <- QueryT $ asks snd
   maybe mzero pure $ f e
-{-# INLINE get #-}
+{-# INLINE query #-}
 
 
 ------------------------------------------------------------------------------
 -- | Attempt to get the value of a component.
-getMaybe
+queryMaybe
     :: Monad m
     => (world 'FieldOf -> Maybe a)
     -> QueryT world m (Maybe a)
-getMaybe f = fmap f $ QueryT $ asks snd
+queryMaybe f = fmap f $ QueryT $ asks snd
 
 
 ------------------------------------------------------------------------------
 -- | Attempt to get the value of a component.
-getEnt
+queryEnt
     :: Monad m
     => QueryT world m Ent
-getEnt = QueryT $ asks fst
+queryEnt = QueryT $ asks fst
+
+
+------------------------------------------------------------------------------
+-- | Query a flag as a 'Bool'.
+queryFlag
+    :: Monad m
+    => (world 'FieldOf -> Maybe ())
+    -> QueryT world m Bool
+queryFlag = fmap (maybe False (const True)) . queryMaybe
+
+
+------------------------------------------------------------------------------
+-- | Perform a query with a default.
+queryDef
+    :: Monad m
+    => z
+    -> (world 'FieldOf -> Maybe z)
+    -> QueryT world m z
+queryDef z = fmap (maybe z id) . queryMaybe
+
+
+------------------------------------------------------------------------------
+-- | An 'EntTarget' is a set of 'Ent's to iterate over.
+type EntTarget world m = SystemT world m [Ent]
+
+
+------------------------------------------------------------------------------
+-- | Iterate over all entities.
+allEnts :: Monad m => EntTarget world m
+allEnts = do
+  (es, _) <- SystemT get
+  pure $ Ent <$> [0 .. es - 1]
+
+
+------------------------------------------------------------------------------
+-- | Iterate over some entities.
+someEnts :: Monad m => [Ent] -> EntTarget world m
+someEnts = pure
+
+
+------------------------------------------------------------------------------
+-- | Iterate over an entity.
+anEnt :: Monad m => Ent -> EntTarget world m
+anEnt = pure . pure
+
+
+------------------------------------------------------------------------------
+-- | Turn a 'Maybe' into an 'Update'.
+maybeToUpdate :: Maybe a -> Update a
+maybeToUpdate Nothing  = Unset
+maybeToUpdate (Just a) = Set a
 

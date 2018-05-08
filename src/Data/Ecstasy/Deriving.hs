@@ -7,10 +7,11 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module Data.Ecstasy.Deriving where
 
-import           Data.Ecstasy.Types (Update (..))
+import           Data.Ecstasy.Types (Update (..), VirtualWrapper (..), VirtualAccess (..), Ent (..))
 import           Data.IntMap (IntMap)
 import qualified Data.IntMap as I
 import           GHC.Generics
@@ -41,51 +42,62 @@ instance (GConvertSetter a c , GConvertSetter b d) => GConvertSetter (a :*: b) (
   {-# INLINE gConvertSetter #-}
 
 
-class GGetEntity a b where
-  gGetEntity :: a x -> Int -> b x
+class GGetEntity m a b where
+  gGetEntity :: a x -> Int -> m (b x)
 
-instance GGetEntity (K1 i (IntMap a)) (K1 i' (Maybe a)) where
-  gGetEntity (K1 a) e = K1 $ I.lookup e $ a
+instance (Applicative m, VirtualAccess name m a)
+      => GGetEntity m (K1 i (VirtualWrapper name a)) (K1 i' (Maybe a)) where
+  gGetEntity (K1 _) e = fmap K1 $ vget @name $ Ent e
   {-# INLINE gGetEntity #-}
 
-instance GGetEntity (K1 i (Maybe (Int, a))) (K1 i' (Maybe a)) where
-  gGetEntity (K1 (Just (e', a))) e | e == e' = K1 $ Just a
-  gGetEntity _ _ = K1 Nothing
+instance Applicative m => GGetEntity m (K1 i (IntMap a)) (K1 i' (Maybe a)) where
+  gGetEntity (K1 a) e = pure . K1 $ I.lookup e $ a
   {-# INLINE gGetEntity #-}
 
-instance GGetEntity f f' => GGetEntity (M1 i c f) (M1 i' c' f') where
-  gGetEntity (M1 a) e = M1 $ gGetEntity a e
+instance Applicative m => GGetEntity m (K1 i (Maybe (Int, a))) (K1 i' (Maybe a)) where
+  gGetEntity (K1 (Just (e', a))) e | e == e' = pure . K1 $ Just a
+  gGetEntity _ _ = pure $ K1 Nothing
   {-# INLINE gGetEntity #-}
 
-instance (GGetEntity a c , GGetEntity b d) => GGetEntity (a :*: b) (c :*: d) where
-  gGetEntity (a :*: b) e = gGetEntity a e :*: gGetEntity b e
+instance (Functor m, GGetEntity m f f') => GGetEntity m (M1 i c f) (M1 i' c' f') where
+  gGetEntity (M1 a) e = fmap M1 $ gGetEntity a e
+  {-# INLINE gGetEntity #-}
+
+instance (Applicative m, GGetEntity m a c , GGetEntity m b d) => GGetEntity m (a :*: b) (c :*: d) where
+  gGetEntity (a :*: b) e = (:*:) <$> gGetEntity a e <*> gGetEntity b e
   {-# INLINE gGetEntity #-}
 
 
-class GSetEntity a b where
-  gSetEntity :: a x -> Int -> b x -> b x
+class GSetEntity m a b where
+  gSetEntity :: a x -> Int -> b x -> m (b x)
 
-instance GSetEntity (K1 i (Update a)) (K1 i' (Maybe (Int, a))) where
-  gSetEntity (K1 (Set a)) e _ = K1 $ Just (e, a)
+instance Applicative m => GSetEntity m (K1 i (Update a)) (K1 i' (Maybe (Int, a))) where
+  gSetEntity (K1 (Set a)) e _ = pure . K1 $ Just (e, a)
   gSetEntity (K1 Unset) e (K1 (Just (e', b))) =
-    if e == e'
+    pure $ if e == e'
        then K1 Nothing
        else K1 $ Just (e', b)
-  gSetEntity _  _ (K1 b) = K1 b
+  gSetEntity _  _ (K1 b) = pure $ K1 b
   {-# INLINE gSetEntity #-}
 
-instance GSetEntity (K1 i (Update a)) (K1 i' (IntMap a)) where
-  gSetEntity (K1 Keep) _ (K1 b) = K1 b
-  gSetEntity (K1 (Set a)) e (K1 b) = K1 $ I.alter (const $ Just a) e b
-  gSetEntity (K1 Unset) e (K1 b) = K1 $ I.alter (const Nothing) e b
+instance (Applicative m, VirtualAccess name m a)
+      => GSetEntity m (K1 i (Update a)) (K1 i' (VirtualWrapper name a)) where
+  gSetEntity (K1 a) e _ = vset @name (Ent e) a
+                       *> pure (K1 VirtualWrapper)
   {-# INLINE gSetEntity #-}
 
-instance GSetEntity f f' => GSetEntity (M1 i c f) (M1 i' c' f') where
-  gSetEntity (M1 a) e (M1 b) = M1 $ gSetEntity a e b
+instance Applicative m => GSetEntity m (K1 i (Update a)) (K1 i' (IntMap a)) where
+  gSetEntity (K1 Keep) _ (K1 b) = pure $ K1 b
+  gSetEntity (K1 (Set a)) e (K1 b) = pure . K1 $ I.alter (const $ Just a) e b
+  gSetEntity (K1 Unset) e (K1 b) = pure . K1 $ I.alter (const Nothing) e b
   {-# INLINE gSetEntity #-}
 
-instance (GSetEntity a c , GSetEntity b d) => GSetEntity (a :*: b) (c :*: d) where
-  gSetEntity (a :*: b) e (c :*: d) = gSetEntity a e c :*: gSetEntity b e d
+instance (Functor m, GSetEntity m f f') => GSetEntity m (M1 i c f) (M1 i' c' f') where
+  gSetEntity (M1 a) e (M1 b) = fmap M1 $ gSetEntity a e b
+  {-# INLINE gSetEntity #-}
+
+instance (Applicative m, GSetEntity m a c, GSetEntity m b d) => GSetEntity m (a :*: b) (c :*: d) where
+  gSetEntity (a :*: b) e (c :*: d) = (:*:) <$> gSetEntity a e c <*> gSetEntity b e d
   {-# INLINE gSetEntity #-}
 
 
@@ -115,6 +127,10 @@ instance GDefault 'True (K1 i (Update c)) where
 
 instance GDefault keep (K1 i (IntMap c)) where
   gdef = K1 I.empty
+  {-# INLINE gdef #-}
+
+instance GDefault keep (K1 i (VirtualWrapper name a)) where
+  gdef = K1 VirtualWrapper
   {-# INLINE gdef #-}
 
 instance GDefault keep f => GDefault keep (M1 i c f) where
