@@ -53,7 +53,7 @@ class HasWorld world where
       => Ent
       -> SystemT world m (world 'FieldOf)
   getEntity e = do
-    w <- gets snd
+    w <- SystemT $ gets snd
     pure . to . gGetEntity (from w) $ T.unEnt e
   {-# INLINE getEntity #-}
 
@@ -75,9 +75,9 @@ class HasWorld world where
       -> world 'SetterOf
       -> SystemT world m ()
   setEntity e s = do
-    w <- gets snd
+    w <- SystemT $ gets snd
     let x = to . gSetEntity (from s) (T.unEnt e) $ from w
-    modify . second $ const x
+    SystemT . modify . second $ const x
   {-# INLINE setEntity #-}
 
   ----------------------------------------------------------------------------
@@ -163,8 +163,8 @@ nextEntity
     :: Monad m
     => SystemT a m Ent
 nextEntity = do
-  (e, _) <- S.get
-  modify . first . const $ e + 1
+  (e, _) <- SystemT S.get
+  SystemT . modify . first . const $ e + 1
   pure $ Ent e
 
 
@@ -196,7 +196,7 @@ unQueryT
   -> Ent
   -> world 'FieldOf
   -> m (Maybe a)
-unQueryT q e f = runMaybeT $ runReaderT q (e, f)
+unQueryT q e f = runMaybeT $ flip runReaderT (e, f) $ runQueryT' q
 
 
 ------------------------------------------------------------------------------
@@ -208,7 +208,7 @@ emap
     => QueryT world m (world 'SetterOf)
     -> SystemT world m ()
 emap f = do
-  (es, _) <- S.get
+  (es, _) <- SystemT S.get
   for_ [0 .. es - 1] $ \(Ent -> e) -> do
     cs <- getEntity e
     sets <- lift $ unQueryT f e cs
@@ -225,7 +225,7 @@ efor
     => (Ent -> QueryT world m a)
     -> SystemT world m [a]
 efor f = do
-  (es, _) <- S.get
+  (es, _) <- SystemT S.get
   fmap catMaybes $ for [0 .. es - 1] $ \(Ent -> e) -> do
     cs <- getEntity e
     lift $ unQueryT (f e) e cs
@@ -253,7 +253,7 @@ yieldSystemT
     => SystemState world
     -> SystemT world m a
     -> m (SystemState world, a)
-yieldSystemT = (fmap swap .) . flip S.runStateT
+yieldSystemT w = fmap swap . flip S.runStateT w . runSystemT'
 
 
 ------------------------------------------------------------------------------
@@ -263,7 +263,7 @@ runSystemT
     => world 'WorldOf
     -> SystemT world m a
     -> m a
-runSystemT = flip evalStateT . (0,)
+runSystemT w = flip evalStateT (0, w) . runSystemT'
 
 
 ------------------------------------------------------------------------------
@@ -280,7 +280,7 @@ runSystem = (runIdentity .) . runSystemT
 getWorld
     :: Monad m
     => SystemT world m (world 'WorldOf)
-getWorld = gets snd
+getWorld = SystemT $ gets snd
 
 
 ------------------------------------------------------------------------------
@@ -301,7 +301,7 @@ without
     => (world 'FieldOf -> Maybe a)
     -> QueryT world m ()
 without f = do
-  e <- asks snd
+  e <- QueryT $ asks snd
   maybe (pure ()) (const mzero) $ f e
 
 
@@ -312,7 +312,7 @@ get
     => (world 'FieldOf -> Maybe a)
     -> QueryT world m a
 get f = do
-  e <- asks snd
+  e <- QueryT $ asks snd
   maybe mzero pure $ f e
 {-# INLINE get #-}
 
@@ -323,7 +323,7 @@ getMaybe
     :: Monad m
     => (world 'FieldOf -> Maybe a)
     -> QueryT world m (Maybe a)
-getMaybe f = fmap f $ asks snd
+getMaybe f = fmap f $ QueryT $ asks snd
 
 
 ------------------------------------------------------------------------------
@@ -331,5 +331,5 @@ getMaybe f = fmap f $ asks snd
 getEnt
     :: Monad m
     => QueryT world m Ent
-getEnt = asks fst
+getEnt = QueryT $ asks fst
 
