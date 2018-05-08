@@ -6,9 +6,9 @@ module Data.Ecstasy.Types where
 
 import Control.Monad.Trans.Maybe (MaybeT)
 import Control.Monad.Trans.Reader (ReaderT)
-import Control.Monad.Trans.State (StateT)
+import Control.Monad.Trans.State.Strict (StateT)
 import Data.Functor.Identity (Identity)
-import Data.IntMap (IntMap)
+import Data.IntMap.Strict (IntMap)
 
 
 ------------------------------------------------------------------------------
@@ -59,7 +59,7 @@ data ComponentType
 data Update a
   = Keep   -- ^ Keep the current value.
   | Unset  -- ^ Delete the current value if it exists.
-  | Set a  -- ^ Set the current value.
+  | Set {-# UNPACK #-} !a  -- ^ Set the current value.
   deriving (Eq, Ord, Show, Read)
 
 
