@@ -17,7 +17,7 @@ import           Control.Arrow (first, second)
 import           Control.Monad (mzero, void)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Maybe (runMaybeT)
-import           Control.Monad.Trans.Reader (runReaderT, ask)
+import           Control.Monad.Trans.Reader (runReaderT, ask, asks)
 import           Control.Monad.Trans.State (modify, gets, evalStateT)
 import qualified Control.Monad.Trans.State as S
 import           Data.Ecstasy.Deriving
@@ -187,9 +187,10 @@ deleteEntity = flip setEntity delEntity
 -- | Evaluate a 'QueryT'.
 unQueryT
   :: QueryT world m a
+  -> Ent
   -> world 'FieldOf
   -> m (Maybe a)
-unQueryT = (runMaybeT .) . runReaderT
+unQueryT q e f = runMaybeT $ runReaderT q (e, f)
 
 
 ------------------------------------------------------------------------------
@@ -204,7 +205,7 @@ emap f = do
   (es, _) <- S.get
   for_ [0 .. es - 1] $ \(Ent -> e) -> do
     cs <- getEntity e
-    sets <- lift $ unQueryT f cs
+    sets <- lift $ unQueryT f e cs
     for_ sets $ setEntity e
 
 
@@ -221,7 +222,7 @@ efor f = do
   (es, _) <- S.get
   fmap catMaybes $ for [0 .. es - 1] $ \(Ent -> e) -> do
     cs <- getEntity e
-    lift $ unQueryT (f e) cs
+    lift $ unQueryT (f e) e cs
 
 
 ------------------------------------------------------------------------------
@@ -235,7 +236,7 @@ runQueryT
     -> SystemT world m (Maybe a)
 runQueryT e qt = do
   cs <- getEntity e
-  lift $ unQueryT qt cs
+  lift $ unQueryT qt e cs
 
 
 ------------------------------------------------------------------------------
@@ -293,7 +294,7 @@ without
     => (world 'FieldOf -> Maybe a)
     -> QueryT world m ()
 without f = do
-  e <- ask
+  e <- asks snd
   maybe (pure ()) (const mzero) $ f e
 
 
@@ -304,7 +305,7 @@ get
     => (world 'FieldOf -> Maybe a)
     -> QueryT world m a
 get f = do
-  e <- ask
+  e <- asks snd
   maybe mzero pure $ f e
 
 
@@ -314,5 +315,13 @@ getMaybe
     :: Monad m
     => (world 'FieldOf -> Maybe a)
     -> QueryT world m (Maybe a)
-getMaybe f = fmap f ask
+getMaybe f = fmap f $ asks snd
+
+
+------------------------------------------------------------------------------
+-- | Attempt to get the value of a component.
+getEnt
+    :: Monad m
+    => QueryT world m Ent
+getEnt = asks fst
 

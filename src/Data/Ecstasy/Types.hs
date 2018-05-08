@@ -34,7 +34,7 @@ type System  w = SystemT w Identity
 
 ------------------------------------------------------------------------------
 -- | A computation to run over a particular entity.
-type QueryT w m = ReaderT (w 'FieldOf) (MaybeT m)
+type QueryT w m = ReaderT (Ent, w 'FieldOf) (MaybeT m)
 
 
 ------------------------------------------------------------------------------
