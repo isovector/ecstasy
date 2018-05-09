@@ -28,7 +28,7 @@ import           Data.Ecstasy.Deriving
 import qualified Data.Ecstasy.Types as T
 import           Data.Ecstasy.Types hiding (unEnt)
 import           Data.Foldable (for_)
-import           Data.Functor.Identity (runIdentity)
+import           Data.Functor.Identity (Identity (..))
 import           Data.Maybe (catMaybes)
 import           Data.Traversable (for)
 import           Data.Tuple (swap)
@@ -49,10 +49,10 @@ class HasWorld' world => HasWorld world m where
   default getEntity
       :: ( Monad m
          , GGetEntity m
-                      (Rep (world 'WorldOf))
+                      (Rep (world ('WorldOf m)))
                       (Rep (world 'FieldOf))
          , Generic (world 'FieldOf)
-         , Generic (world 'WorldOf)
+         , Generic (world ('WorldOf m))
          )
       => Ent
       -> SystemT world m (world 'FieldOf)
@@ -70,8 +70,8 @@ class HasWorld' world => HasWorld world m where
   default setEntity
       :: ( GSetEntity m
                       (Rep (world 'SetterOf))
-                      (Rep (world 'WorldOf))
-         , Generic (world 'WorldOf)
+                      (Rep (world ('WorldOf m)))
+         , Generic (world ('WorldOf m))
          , Generic (world 'SetterOf)
          , Monad m
          )
@@ -83,6 +83,16 @@ class HasWorld' world => HasWorld world m where
     x <- lift . fmap to . gSetEntity (from s) (T.unEnt e) $ from w
     SystemT . modify . second $ const x
   {-# INLINE setEntity #-}
+
+  ----------------------------------------------------------------------------
+  -- | The default world, which contains only empty containers.
+  defWorld :: world ('WorldOf m)
+  default defWorld
+      :: ( Generic (world ('WorldOf m))
+         , GDefault 'True (Rep (world ('WorldOf m)))
+         )
+      => world ('WorldOf m)
+  defWorld = def @'True
 
 
 class HasWorld' world where
@@ -136,44 +146,32 @@ class HasWorld' world where
   delEntity = def @'False
   {-# INLINE delEntity #-}
 
-  ----------------------------------------------------------------------------
-  -- | The default world, which contains only empty containers.
-  defWorld :: world 'WorldOf
-  default defWorld
-      :: ( Generic (world 'WorldOf)
-         , GDefault 'True (Rep (world 'WorldOf))
-         )
-      => world 'WorldOf
-  defWorld = def @'True
-
 
 instance ( Generic (world 'SetterOf)
-         , Generic (world 'WorldOf)
          , Generic (world 'FieldOf)
          , GConvertSetter (Rep (world 'FieldOf))
                           (Rep (world 'SetterOf))
          , GDefault 'True  (Rep (world 'FieldOf))
          , GDefault 'False (Rep (world 'SetterOf))
          , GDefault 'True  (Rep (world 'SetterOf))
-         , GDefault 'True  (Rep (world 'WorldOf))
          ) => HasWorld' world
 
 
 instance ( HasWorld' world
          , Generic (world 'SetterOf)
-         , Generic (world 'WorldOf)
+         , Generic (world ('WorldOf m))
          , Generic (world 'FieldOf)
          , GConvertSetter (Rep (world 'FieldOf))
                           (Rep (world 'SetterOf))
          , GDefault 'True  (Rep (world 'FieldOf))
          , GDefault 'False (Rep (world 'SetterOf))
          , GDefault 'True  (Rep (world 'SetterOf))
-         , GDefault 'True  (Rep (world 'WorldOf))
+         , GDefault 'True  (Rep (world ('WorldOf m)))
          , GSetEntity m
                       (Rep (world 'SetterOf))
-                      (Rep (world 'WorldOf))
+                      (Rep (world ('WorldOf m)))
          , GGetEntity m
-                      (Rep (world 'WorldOf))
+                      (Rep (world ('WorldOf m)))
                       (Rep (world 'FieldOf))
          , Monad m
          ) => HasWorld world m
@@ -293,9 +291,9 @@ runQueryT e qt = do
 -- with a better formalization for everything.
 yieldSystemT
     :: Monad m
-    => SystemState world
+    => SystemState world m
     -> SystemT world m a
-    -> m (SystemState world, a)
+    -> m (SystemState world m, a)
 yieldSystemT w = fmap swap . flip S.runStateT w . runSystemT'
 
 
@@ -303,7 +301,7 @@ yieldSystemT w = fmap swap . flip S.runStateT w . runSystemT'
 -- | Evaluate a 'SystemT'.
 runSystemT
     :: Monad m
-    => world 'WorldOf
+    => world ('WorldOf m)
     -> SystemT world m a
     -> m a
 runSystemT w = flip evalStateT (0, w) . runSystemT'
@@ -312,7 +310,7 @@ runSystemT w = flip evalStateT (0, w) . runSystemT'
 ------------------------------------------------------------------------------
 -- | Evaluate a 'System'.
 runSystem
-    :: world 'WorldOf
+    :: world ('WorldOf Identity)
     -> System world a
     -> a
 runSystem = (runIdentity .) . runSystemT
@@ -322,7 +320,7 @@ runSystem = (runIdentity .) . runSystemT
 -- | Get the world.
 getWorld
     :: Monad m
-    => SystemT world m (world 'WorldOf)
+    => SystemT world m (world ('WorldOf m))
 getWorld = SystemT $ gets snd
 
 

@@ -7,11 +7,13 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeInType                 #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# OPTIONS_GHC -funbox-strict-fields   #-}
 
 module Data.Ecstasy.Types where
 
+import Data.Kind
 import Control.Applicative (Alternative)
 import Control.Monad (MonadPlus)
 import Control.Monad.IO.Class (MonadIO)
@@ -38,12 +40,12 @@ instance Show Ent where
 
 ------------------------------------------------------------------------------
 -- | The internal state of the 'SystemT' monad.
-type SystemState w = (Int, w 'WorldOf)
+type SystemState w m = (Int, w ('WorldOf m))
 
 ------------------------------------------------------------------------------
 -- | A monad transformer over an ECS given a world 'w'.
 newtype SystemT w m a = SystemT
-  { runSystemT' :: StateT (SystemState w) m a
+  { runSystemT' :: StateT (SystemState w m) m a
   }
   deriving ( Functor
            , Applicative
@@ -51,8 +53,10 @@ newtype SystemT w m a = SystemT
            , MonadReader r
            , MonadWriter ww
            , MonadIO
-           , MonadTrans
            )
+
+instance MonadTrans (SystemT w) where
+  lift = SystemT . lift
 
 instance MonadState s m => MonadState s (SystemT w m) where
   get = SystemT . lift $ get
@@ -87,20 +91,18 @@ instance MonadReader r m => MonadReader r (QueryT w m) where
   local f = QueryT . runQueryT' . local f
 
 
-data VirtualWrapper (name :: Symbol) a = VirtualWrapper
-
-class VirtualAccess (name :: Symbol) m a | name -> a, name -> m where
-  vget :: Ent -> m (Maybe a)
-  vset :: Ent -> Update a -> m ()
+data VTable m a = VTable
+  { vget :: Ent -> m (Maybe a)
+  , vset :: Ent -> Update a -> m ()
+  }
 
 
 ------------------------------------------------------------------------------
 -- | Data kind used to parameterize the ECS record.
 data StorageType
   = FieldOf   -- ^ Used to describe the actual entity.
-  | WorldOf   -- ^ Used to construct the world's storage.
+  | WorldOf (Type -> Type)  -- ^ Used to construct the world's storage.
   | SetterOf  -- ^ Used to construct a setter to update an entity.
-  deriving (Eq, Ord, Show, Read, Enum, Bounded)
 
 
 ------------------------------------------------------------------------------
@@ -108,7 +110,7 @@ data StorageType
 data ComponentType
   = Field      -- ^ This component can be owned by any entity.
   | Unique     -- ^ This component can be owned by only a single entity at a time.
-  | Virtual Symbol   -- ^ This component is owned by another system.
+  | Virtual    -- ^ This component is owned by another system.
   -- | Mandatory  -- ^ This component must exist.
 
 
@@ -125,11 +127,11 @@ data Update a
 -- | A type family to be used in your ECS recrod.
 type family Component (s :: StorageType)
                       (c :: ComponentType)
-                      (a :: *) :: * where
+                      (a :: Type) :: Type where
   Component 'FieldOf  c      a = Maybe a
   Component 'SetterOf c      a = Update a
 
-  Component 'WorldOf 'Field  a  = IntMap a
-  Component 'WorldOf 'Unique a  = Maybe (Int, a)
-  Component 'WorldOf ('Virtual name) a = VirtualWrapper name a
+  Component ('WorldOf m) 'Field  a  = IntMap a
+  Component ('WorldOf m) 'Unique a  = Maybe (Int, a)
+  Component ('WorldOf m) 'Virtual a = VTable m a
 

@@ -13,7 +13,11 @@ import Control.Monad.IO.Class (liftIO)
 
 main :: IO ()
 main = do
-  e <- runSystemT defWorld $ do
+  e <- runSystemT (
+      defWorld
+      { say = VTable vgetSay vsetSay
+      , sAY = VTable vgetSAY vsetSAY
+      } ) $ do
     void $ newEntity $ defEntity
         { pos = Just 0
         , vel = Just 1
@@ -29,15 +33,16 @@ main = do
 
     let
       step = do
-        pos' <- get pos
-        vel' <- get vel
+        pos' <- query pos
+        vel' <- query vel
         pure $ defEntity'
           { pos = Set $ pos' + vel'
           }
-    emap step
-    emap step
+    emap allEnts step
+    emap allEnts step
 
-    efor $ \i -> do
+    efor allEnts $ do
+      i <- queryEnt
       with ack
       pure $ show i
 
@@ -51,18 +56,16 @@ data Entity f = Entity
   { pos :: Component f 'Field  Int
   , vel :: Component f 'Field  Int
   , ack :: Component f 'Unique Bool
-  , say :: Component f ('Virtual "lower") String
-  , sAY :: Component f ('Virtual "upper") String
+  , say :: Component f 'Virtual String
+  , sAY :: Component f 'Virtual String
   } deriving (Generic)
 
-instance VirtualAccess "lower" IO [Char] where
-  vget _ = pure Nothing
-  vset _ (Set msg) = putStrLn msg
-  vset _ _ = pure ()
+vgetSay _ = pure Nothing
+vsetSay _ (Set msg) = putStrLn msg
+vsetSay _ _ = pure ()
 
-instance VirtualAccess "upper" IO [Char] where
-  vget _ = pure Nothing
-  vset _ (Set msg) = putStrLn $ fmap toUpper msg
-  vset _ _ = pure ()
+vgetSAY _ = pure Nothing
+vsetSAY _ (Set msg) = putStrLn $ fmap toUpper msg
+vsetSAY _ _ = pure ()
 
 

@@ -11,7 +11,7 @@
 
 module Data.Ecstasy.Deriving where
 
-import           Data.Ecstasy.Types (Update (..), VirtualWrapper (..), VirtualAccess (..), Ent (..))
+import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..))
 import           Data.IntMap (IntMap)
 import qualified Data.IntMap as I
 import           GHC.Generics
@@ -45,9 +45,9 @@ instance (GConvertSetter a c , GConvertSetter b d) => GConvertSetter (a :*: b) (
 class GGetEntity m a b where
   gGetEntity :: a x -> Int -> m (b x)
 
-instance (Applicative m, VirtualAccess name m a)
-      => GGetEntity m (K1 i (VirtualWrapper name a)) (K1 i' (Maybe a)) where
-  gGetEntity (K1 _) e = fmap K1 $ vget @name $ Ent e
+instance (Applicative m)
+      => GGetEntity m (K1 i (VTable m a)) (K1 i' (Maybe a)) where
+  gGetEntity (K1 (VTable vget _)) e = fmap K1 $ vget $ Ent e
   {-# INLINE gGetEntity #-}
 
 instance Applicative m => GGetEntity m (K1 i (IntMap a)) (K1 i' (Maybe a)) where
@@ -80,10 +80,10 @@ instance Applicative m => GSetEntity m (K1 i (Update a)) (K1 i' (Maybe (Int, a))
   gSetEntity _  _ (K1 b) = pure $ K1 b
   {-# INLINE gSetEntity #-}
 
-instance (Applicative m, VirtualAccess name m a)
-      => GSetEntity m (K1 i (Update a)) (K1 i' (VirtualWrapper name a)) where
-  gSetEntity (K1 a) e _ = vset @name (Ent e) a
-                       *> pure (K1 VirtualWrapper)
+instance (Applicative m)
+      => GSetEntity m (K1 i (Update a)) (K1 i' (VTable m a)) where
+  gSetEntity (K1 a) e (K1 z@(VTable _ vset)) =
+    vset (Ent e) a *> pure (K1 z)
   {-# INLINE gSetEntity #-}
 
 instance Applicative m => GSetEntity m (K1 i (Update a)) (K1 i' (IntMap a)) where
@@ -129,8 +129,8 @@ instance GDefault keep (K1 i (IntMap c)) where
   gdef = K1 I.empty
   {-# INLINE gdef #-}
 
-instance GDefault keep (K1 i (VirtualWrapper name a)) where
-  gdef = K1 VirtualWrapper
+instance Applicative m => GDefault keep (K1 i (VTable m a)) where
+  gdef = K1 $ VTable (const $ pure Nothing) (const $ const $ pure ())
   {-# INLINE gdef #-}
 
 instance GDefault keep f => GDefault keep (M1 i c f) where
