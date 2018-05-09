@@ -1,13 +1,14 @@
-{-# LANGUAGE AllowAmbiguousTypes   #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeOperators         #-}
-{-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE AllowAmbiguousTypes       #-}
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TypeApplications          #-}
+{-# LANGUAGE TypeOperators             #-}
+{-# LANGUAGE UndecidableInstances      #-}
 
 module Data.Ecstasy.Deriving where
 
@@ -132,12 +133,15 @@ instance GDefault keep (K1 i (IntMap c)) where
   {-# INLINE gdef #-}
 
 instance {-# OVERLAPPING #-} (Applicative m, KnownSymbol sym)
-      => GDefault keep (M1 S (MetaSel (Just sym) x y z) (K1 i' (VTable m a))) where
-  gdef = M1 $ K1 $ error $ mconcat
-    [ "unset vtable for Virtual component '"
-    , symbolVal $ Proxy @sym
-    , "'"
-    ]
+      => GDefault keep (M1 S ('MetaSel ('Just sym) x y z) (K1 i (VTable m a))) where
+  gdef = M1 $ K1 $ VTable err err
+    where
+      err :: err
+      err = error $ mconcat
+            [ "unset vtable for Virtual component '"
+            , symbolVal $ Proxy @sym
+            , "'"
+            ]
   {-# INLINE gdef #-}
 
 instance GDefault keep f => GDefault keep (M1 i c f) where

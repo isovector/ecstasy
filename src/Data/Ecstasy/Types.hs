@@ -26,7 +26,6 @@ import Control.Monad.Trans.State.Strict (StateT (..))
 import Control.Monad.Writer.Class (MonadWriter)
 import Data.Functor.Identity (Identity)
 import Data.IntMap.Strict (IntMap)
-import GHC.TypeLits (Symbol)
 
 
 ------------------------------------------------------------------------------
