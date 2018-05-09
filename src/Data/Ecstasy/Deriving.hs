@@ -14,7 +14,9 @@ module Data.Ecstasy.Deriving where
 import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..))
 import           Data.IntMap (IntMap)
 import qualified Data.IntMap as I
+import           Data.Proxy (Proxy (..))
 import           GHC.Generics
+import           GHC.TypeLits
 
 
 class GConvertSetter a b where
@@ -129,8 +131,13 @@ instance GDefault keep (K1 i (IntMap c)) where
   gdef = K1 I.empty
   {-# INLINE gdef #-}
 
-instance Applicative m => GDefault keep (K1 i (VTable m a)) where
-  gdef = K1 $ VTable (const $ pure Nothing) (const $ const $ pure ())
+instance {-# OVERLAPPING #-} (Applicative m, KnownSymbol sym)
+      => GDefault keep (M1 S (MetaSel (Just sym) x y z) (K1 i' (VTable m a))) where
+  gdef = M1 $ K1 $ error $ mconcat
+    [ "unset vtable for Virtual component '"
+    , symbolVal $ Proxy @sym
+    , "'"
+    ]
   {-# INLINE gdef #-}
 
 instance GDefault keep f => GDefault keep (M1 i c f) where

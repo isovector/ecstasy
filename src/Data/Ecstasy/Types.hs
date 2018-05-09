@@ -131,7 +131,7 @@ type family Component (s :: StorageType)
   Component 'FieldOf  c      a = Maybe a
   Component 'SetterOf c      a = Update a
 
-  Component ('WorldOf m) 'Field  a  = IntMap a
-  Component ('WorldOf m) 'Unique a  = Maybe (Int, a)
+  Component ('WorldOf m) 'Field   a = IntMap a
+  Component ('WorldOf m) 'Unique  a = Maybe (Int, a)
   Component ('WorldOf m) 'Virtual a = VTable m a
 
