@@ -134,7 +134,7 @@ instance GDefault keep (K1 i (IntMap c)) where
 
 instance {-# OVERLAPPING #-} (Applicative m, KnownSymbol sym)
       => GDefault keep (M1 S ('MetaSel ('Just sym) x y z) (K1 i (VTable m a))) where
-  gdef = M1 $ K1 $ VTable err err
+  gdef = M1 $ K1 $ VTable (const err) (const $ const err)
     where
       err :: err
       err = error $ mconcat

@@ -1,7 +1,7 @@
-{-# LANGUAGE AllowAmbiguousTypes        #-}
 {-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE FunctionalDependencies     #-}
+{-# LANGUAGE DeriveFoldable             #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
@@ -13,7 +13,6 @@
 
 module Data.Ecstasy.Types where
 
-import Data.Kind
 import Control.Applicative (Alternative)
 import Control.Monad (MonadPlus)
 import Control.Monad.IO.Class (MonadIO)
@@ -26,6 +25,7 @@ import Control.Monad.Trans.State.Strict (StateT (..))
 import Control.Monad.Writer.Class (MonadWriter)
 import Data.Functor.Identity (Identity)
 import Data.IntMap.Strict (IntMap)
+import Data.Kind
 
 
 ------------------------------------------------------------------------------
@@ -91,8 +91,8 @@ instance MonadReader r m => MonadReader r (QueryT w m) where
 
 
 data VTable m a = VTable
-  { vget :: Ent -> m (Maybe a)
-  , vset :: Ent -> Update a -> m ()
+  { vget :: !(Ent -> m (Maybe a))
+  , vset :: !(Ent -> Update a -> m ())
   }
 
 
@@ -119,7 +119,7 @@ data Update a
   = Keep   -- ^ Keep the current value.
   | Unset  -- ^ Delete the current value if it exists.
   | Set !a  -- ^ Set the current value.
-  deriving (Eq, Ord, Show, Read)
+  deriving (Eq, Ord, Show, Read, Functor, Foldable, Traversable)
 
 
 ------------------------------------------------------------------------------
