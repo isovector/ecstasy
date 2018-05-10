@@ -21,7 +21,7 @@ import           Control.Monad.Trans.Maybe (runMaybeT)
 import           Control.Monad.Trans.Reader (runReaderT, asks)
 import           Control.Monad.Trans.State.Strict (modify, get, gets, evalStateT)
 import qualified Control.Monad.Trans.State.Strict as S
-import           Data.Ecstasy.Deriving
+import           Data.Ecstasy.Internal.Deriving
 import qualified Data.Ecstasy.Types as T
 import           Data.Ecstasy.Types hiding (unEnt)
 import           Data.Foldable (for_)

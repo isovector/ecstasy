@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UndecidableInstances      #-}
 
-module Data.Ecstasy.Deriving where
+module Data.Ecstasy.Internal.Deriving where
 
 import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..))
 import           Data.IntMap (IntMap)
