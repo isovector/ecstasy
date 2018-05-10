@@ -19,7 +19,7 @@
 -- synonym:
 --
 -- @
---   type Entity = World 'FieldOf
+--   type Entity = World ''FieldOf'
 -- @
 --
 -- which is the only form of the @World@ that most users of ecstasy will
@@ -38,6 +38,7 @@ module Data.Ecstasy
   -- * Storage
   -- $world
   , defStorage
+  , StorageType (..)
 
   -- * The SystemT monad
   -- $systemt

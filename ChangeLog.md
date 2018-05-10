@@ -1,5 +1,9 @@
 # Revision history for ecstasy
 
+## 0.2.0.1  -- 2018-05-10
+
+* Also export 'StorageType'.
+
 ## 0.2.0.0  -- 2018-05-10
 
 * Renamed 'get*' to 'query*'.
