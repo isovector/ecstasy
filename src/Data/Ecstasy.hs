@@ -1,427 +1,248 @@
-{-# LANGUAGE AllowAmbiguousTypes    #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DefaultSignatures      #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TupleSections          #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE UndecidableInstances   #-}
-{-# LANGUAGE ViewPatterns           #-}
-
+-- | Ecstasy is a library architected around the
+-- <http://reasonablypolymorphic.com/blog/higher-kinded-data/ HKD pattern>, the
+-- gist of which is to define a "template" type that can be reused for several
+-- purposes. Users of ecstasy should define a record type of 'Component's
+-- parameterized over a variable of kind 'StorageType':
+--
+-- @
+--   data World s = Entity
+--     { position :: 'Component' s ''Field' (V2 Double)
+--     , graphics :: 'Component' s ''Field' Graphics
+--     , isPlayer :: 'Component' s ''Unique' ()
+--     }
+--     deriving ('Generic')
+-- @
+--
+-- Ensure that this type have an instance of 'Generic'.
+--
+-- For usability, it might be desirable to also define the following type
+-- synonym:
+--
+-- @
+--   type Entity = World 'FieldOf
+-- @
+--
+-- which is the only form of the @World@ that most users of ecstasy will
+-- need to interact with.
+--
+-- Throughout this document there are references to the @HasWorld@ and
+-- @HasWorld'@ classes, which are implementation details and provided
+-- automatically by the library.
 module Data.Ecstasy
-  ( module Data.Ecstasy
-  , module Data.Ecstasy.Types
-  , Generic
+  (
+  -- * Defining components
+  -- $components
+    ComponentType (..)
+  , Component
+
+  -- * Storage
+  -- $world
+  , defStorage
+
+  -- * The SystemT monad
+  -- $systemt
+  , SystemT ()
+  , runSystemT
+  , yieldSystemT
+  , System
+  , runSystem
+  , SystemState
+
+  -- * Working with SystemT
+  , createEntity
+  , newEntity
+  , getEntity
+  , setEntity
+  , deleteEntity
+
+  -- * SystemT traversals
+  -- $traversals
+  , emap
+  , efor
+  , eover
+  , unchanged
+  , delEntity
+
+  -- * Entity targets
+  , EntTarget
+  , allEnts
+  , someEnts
+  , anEnt
+
+  -- * The QueryT monad
+  -- $queryt
+  , QueryT ()
+  , runQueryT
+
+  -- * Queries
+  -- $querying
+  , query
+  , with
+  , without
+  , queryEnt
+  , queryMaybe
+  , queryFlag
+  , queryDef
+
+  -- * Updates
+  , Update (..)
+  , maybeToUpdate
+
+  -- * Miscellany
+  , Ent ()
+  , VTable (..)
+
+  -- * Re-exports
+  , Generic ()
   ) where
 
-import           Control.Arrow (first, second)
-import           Control.Monad (mzero, void)
-import           Control.Monad.Trans.Class (lift)
-import           Control.Monad.Trans.Maybe (runMaybeT)
-import           Control.Monad.Trans.Reader (runReaderT, asks)
-import           Control.Monad.Trans.State.Strict (modify, get, gets, evalStateT)
-import qualified Control.Monad.Trans.State.Strict as S
-import           Data.Ecstasy.Deriving
-import qualified Data.Ecstasy.Types as T
-import           Data.Ecstasy.Types hiding (unEnt)
-import           Data.Foldable (for_)
-import           Data.Functor.Identity (Identity (..))
-import           Data.Maybe (catMaybes)
-import           Data.Traversable (for)
-import           Data.Tuple (swap)
-import           GHC.Generics
+import Data.Ecstasy.Internal hiding (HasWorld, HasWorld')
+import Data.Ecstasy.Types
+import GHC.Generics
 
 
-------------------------------------------------------------------------------
--- | This class provides all of the functionality necessary to manipulate the
--- ECS.
-class HasWorld' world => HasWorld world m where
 
-  ----------------------------------------------------------------------------
-  -- | Fetches an entity from the world given its 'Ent'.
-  getEntity
-      :: Monad m
-      => Ent
-      -> SystemT world m (world 'FieldOf)
-  default getEntity
-      :: ( Monad m
-         , GGetEntity m
-                      (Rep (world ('WorldOf m)))
-                      (Rep (world 'FieldOf))
-         , Generic (world 'FieldOf)
-         , Generic (world ('WorldOf m))
-         )
-      => Ent
-      -> SystemT world m (world 'FieldOf)
-  getEntity e = do
-    w <- SystemT $ gets snd
-    lift . fmap to . gGetEntity @m (from w) $ T.unEnt e
-  {-# INLINE getEntity #-}
-
-  ----------------------------------------------------------------------------
-  -- | Updates an 'Ent' in the world given its setter.
-  setEntity
-      :: Ent
-      -> world 'SetterOf
-      -> SystemT world m ()
-  default setEntity
-      :: ( GSetEntity m
-                      (Rep (world 'SetterOf))
-                      (Rep (world ('WorldOf m)))
-         , Generic (world ('WorldOf m))
-         , Generic (world 'SetterOf)
-         , Monad m
-         )
-      => Ent
-      -> world 'SetterOf
-      -> SystemT world m ()
-  setEntity e s = do
-    w <- SystemT $ gets snd
-    x <- lift . fmap to . gSetEntity (from s) (T.unEnt e) $ from w
-    SystemT . modify . second $ const x
-  {-# INLINE setEntity #-}
-
-  ----------------------------------------------------------------------------
-  -- | The default world, which contains only empty containers.
-  defWorld :: world ('WorldOf m)
-  default defWorld
-      :: ( Generic (world ('WorldOf m))
-         , GDefault 'True (Rep (world ('WorldOf m)))
-         )
-      => world ('WorldOf m)
-  defWorld = def @'True
+-- $components
+-- Components are pieces of data that may or may not exist on a particular
+-- entity. In fact, an 'Ent' is nothing more than an identifier, against which
+-- components are linked.
+--
+-- Components classified by their 'ComponentType', which describes the
+-- semantics behind a component.
+--
+-- [@Field@]  A 'Field' is a "normal" component and corresponds exactly to
+-- a 'Maybe' value.
+--
+-- [@Unique@] A 'Unique' component may only exist on a single entity at a given
+-- time. They are often used to annotate "notable" entites, such as whom the
+-- camera should be following.
+--
+-- [@Virtual@] A 'Virtual' component is defined in terms of monadic 'vget' and
+-- 'vset' actions, rather than having dedicated storage in the ECS. Virtual
+-- components are often used to connect to external systems, eg. to a 3rd party
+-- physics engine which wants to own its own data. For more information on
+-- using virtual components, see <#world defStorage>.
+--
+--
 
 
-class HasWorld' world where
-  ----------------------------------------------------------------------------
-  -- | Transforms an entity into a setter to transform the default entity into
-  -- the given one. Used by 'newEntity'.
-  convertSetter
-      :: world 'FieldOf
-      -> world 'SetterOf
-  default convertSetter
-      :: ( GConvertSetter (Rep (world 'FieldOf))
-                          (Rep (world 'SetterOf))
-         , Generic (world 'FieldOf)
-         , Generic (world 'SetterOf)
-         )
-      => world 'FieldOf
-      -> world 'SetterOf
-  convertSetter = to . gConvertSetter . from
-  {-# INLINE convertSetter #-}
 
-  ----------------------------------------------------------------------------
-  -- | The default entity, owning no components.
-  defEntity :: world 'FieldOf
-  default defEntity
-      :: ( Generic (world 'FieldOf)
-         , GDefault 'True (Rep (world 'FieldOf))
-         )
-      => world 'FieldOf
-  defEntity = def @'True
-  {-# INLINE defEntity #-}
-
-  ----------------------------------------------------------------------------
-  -- | The default setter, which keeps all components with their previous value.
-  defEntity' :: world 'SetterOf
-  default defEntity'
-      :: ( Generic (world 'SetterOf)
-         , GDefault 'True (Rep (world 'SetterOf))
-         )
-      => world 'SetterOf
-  defEntity' = def @'True
-  {-# INLINE defEntity' #-}
-
-  ----------------------------------------------------------------------------
-  -- | A setter which will delete the entity if its 'QueryT' matches.
-  delEntity :: world 'SetterOf
-  default delEntity
-      :: ( Generic (world 'SetterOf)
-         , GDefault 'False (Rep (world 'SetterOf))
-         )
-      => world 'SetterOf
-  delEntity = def @'False
-  {-# INLINE delEntity #-}
+-- $world
+-- #world# 'defStorage' provides a suitable container for storing entity data, to
+-- be used with 'runSystemT' and friends. If you are not using any 'Virtual'
+-- components, it can be used directly.
+--
+-- However, when using 'Virtual' components, the 'VTable' for each must be set
+-- on 'defStorage' before being given as a parameter to 'runSystemT'. For
+-- example, we can write a virtual 'String' component that writes its updates
+-- to stdout:
+--
+-- @
+--   data World s = Entity
+--     { stdout :: 'Component' s ''Virtual' String
+--     }
+--     deriving ('Generic')
+--
+--  main :: IO ()
+--  main = do
+--    let storage = 'defStorage'
+--          { stdout = 'VTable'
+--              { 'vget' = \\_   -> pure Nothing
+--              , 'vset' = \\_ m -> for_ m putStrLn
+--              }
+--          }
+--    'runSystemT' storage $ do
+--      void $ 'createEntity' 'unchanged
+--        { stdout = Just "hello world"
+--        }
+-- @
+--
+-- In this example, if you were to use 'defStorage' rather than @storage@ as the
+-- argument to 'runSystemT', you would receive the following error:
+--
+-- @unset VTable for Virtual component \'stdout\'@
 
 
-instance ( Generic (world 'SetterOf)
-         , Generic (world 'FieldOf)
-         , GConvertSetter (Rep (world 'FieldOf))
-                          (Rep (world 'SetterOf))
-         , GDefault 'True  (Rep (world 'FieldOf))
-         , GDefault 'False (Rep (world 'SetterOf))
-         , GDefault 'True  (Rep (world 'SetterOf))
-         ) => HasWorld' world
+
+-- $systemt
+-- The 'SystemT' transformer provides capabilities for creating, modifying,
+-- reading and deleting entities, as well as performing <#traversals query
+-- traversals> over them. It is the main monad of ecstasy.
 
 
-instance ( HasWorld' world
-         , Generic (world 'SetterOf)
-         , Generic (world ('WorldOf m))
-         , Generic (world 'FieldOf)
-         , GConvertSetter (Rep (world 'FieldOf))
-                          (Rep (world 'SetterOf))
-         , GDefault 'True  (Rep (world 'FieldOf))
-         , GDefault 'False (Rep (world 'SetterOf))
-         , GDefault 'True  (Rep (world 'SetterOf))
-         , GDefault 'True  (Rep (world ('WorldOf m)))
-         , GSetEntity m
-                      (Rep (world 'SetterOf))
-                      (Rep (world ('WorldOf m)))
-         , GGetEntity m
-                      (Rep (world ('WorldOf m)))
-                      (Rep (world 'FieldOf))
-         , Monad m
-         ) => HasWorld world m
+
+-- $queryt
+-- The 'QueryT' transformer provides an environment for <#traversals querying>
+-- components of an entity. Due to its 'Control.Monad.MonadPlus' instance,
+-- failing queries will prevent further computations in the monad from running.
 
 
-------------------------------------------------------------------------------
--- | Retrieve a unique 'Ent'.
-nextEntity
-    :: Monad m
-    => SystemT a m Ent
-nextEntity = do
-  (e, _) <- SystemT S.get
-  SystemT . modify . first . const $ e + 1
-  pure $ Ent e
+
+-- $traversals
+-- #traversals# 'SystemT' provides functionality for traversing over entities
+-- that match a 'EntTarget' and a <#querying query>. The functions 'emap' and
+-- 'eover' return a @world 'SetterOf@, corresponding to partial update of the
+-- targeted entity.
+--
+-- A @world 'SetterOf@ is the world record where all of its selectors have the
+-- type @'Update' a@. For example, given a world:
+--
+-- @
+--   data World s = Entity
+--     { position :: 'Component' s ''Field' (V2 Double)
+--     , graphics :: 'Component' s ''Field' Graphics
+--     , isPlayer :: 'Component' s ''Unique' ()
+--     }
+-- @
+--
+-- then @World 'SetterOf@ is equivalent to the following definition:
+--
+-- @
+--   data World 'SetterOf = Entity
+--     { position :: 'Update' (V2 Double)
+--     , graphics :: 'Update' Graphics
+--     , isPlayer :: 'Update' ()
+--     }
+-- @
+--
+-- 'unchanged' provides a @world 'SetterOf@ which will update no components,
+-- and can have partial modifications added to it.
+--
+-- 'delEntity' provides a @world 'SetterOf@ which will delete all components
+-- associated with the targeted entity.
 
 
-------------------------------------------------------------------------------
--- | Create a new entity.
-newEntity
-    :: (HasWorld world m, Monad m)
-    => world 'FieldOf
-    -> SystemT world m Ent
-newEntity cs = do
-  e <- nextEntity
-  setEntity e $ convertSetter cs
-  pure e
 
+-- $querying
+-- #querying# The 'QueryT' monad provides functionality for performing
+-- computations over an 'Ent''s components. The basic primitive is 'query',
+-- which will pull the value of a component, and fail the query if it isn't
+-- set.
+--
+-- For example, given the following world:
+--
+-- @
+--   data World s = Entity
+--     { position :: 'Component' s ''Field' (V2 Double)
+--     , velocity :: 'Component' s ''Field' (V2 Double)
+--     }
+--     deriving ('Generic')
+-- @
+--
+-- we could model a discrete time simulation via:
+--
+-- @
+--   stepTime :: 'System' World ()
+--   stepTime = do
+--     'emap' 'allEnts' $ do
+--       pos <- 'query' position
+--       vel <- 'query' velocity
+--       pure $ 'unchanged'
+--         { position = 'Set' $ pos + vel
+--         }
+-- @
+--
+-- which will add an entity's velocity to its position, so long as it has both
+-- components to begin with.
 
-------------------------------------------------------------------------------
--- | Delete an entity.
-deleteEntity
-    :: (HasWorld world m, Monad m)
-    => Ent
-    -> SystemT world m ()
-deleteEntity = flip setEntity delEntity
-
-
-------------------------------------------------------------------------------
--- | Evaluate a 'QueryT'.
-unQueryT
-  :: QueryT world m a
-  -> Ent
-  -> world 'FieldOf
-  -> m (Maybe a)
-unQueryT q e f = runMaybeT $ flip runReaderT (e, f) $ runQueryT' q
-
-
-------------------------------------------------------------------------------
--- | Map a 'QueryT' transformation over all entites that match it.
-emap
-    :: ( HasWorld world m
-       , Monad m
-       )
-    => EntTarget world m
-    -> QueryT world m (world 'SetterOf)
-    -> SystemT world m ()
-emap t f = do
-  es <- t
-  for_ es $ \e -> do
-    cs <- getEntity e
-    sets <- lift $ unQueryT f e cs
-    for_ sets $ setEntity e
-
-
-------------------------------------------------------------------------------
--- | Collect the results of a monadic computation over every entity matching
--- a 'QueryT'.
-efor
-    :: ( HasWorld world m
-       , Monad m
-       )
-    => EntTarget world m
-    -> QueryT world m a
-    -> SystemT world m [a]
-efor t f = do
-  es <- t
-  fmap catMaybes $ for es $ \e -> do
-    cs <- getEntity e
-    lift $ unQueryT f e cs
-
-
-------------------------------------------------------------------------------
--- | Do an 'emap' and an 'efor' at the same time.
-eover
-    :: ( HasWorld world m
-       , Monad m
-       )
-    => EntTarget world m
-    -> QueryT world m (a, world 'SetterOf)
-    -> SystemT world m [a]
-eover t f = do
-  es <- t
-  fmap catMaybes $ for es $ \e -> do
-    cs <- getEntity e
-    mset <- lift $ unQueryT f e cs
-    for mset $ \(a, setter) -> do
-      setEntity e setter
-      pure a
-
-
-------------------------------------------------------------------------------
--- | Run a 'QueryT' over a particular 'Ent'.
-runQueryT
-    :: ( HasWorld world m
-       , Monad m
-       )
-    => Ent
-    -> QueryT world m a
-    -> SystemT world m (Maybe a)
-runQueryT e qt = do
-  cs <- getEntity e
-  lift $ unQueryT qt e cs
-
-
-------------------------------------------------------------------------------
--- | Provides a resumable 'SystemT'. This is a pretty big hack until I come up
--- with a better formalization for everything.
-yieldSystemT
-    :: Monad m
-    => SystemState world m
-    -> SystemT world m a
-    -> m (SystemState world m, a)
-yieldSystemT w = fmap swap . flip S.runStateT w . runSystemT'
-
-
-------------------------------------------------------------------------------
--- | Evaluate a 'SystemT'.
-runSystemT
-    :: Monad m
-    => world ('WorldOf m)
-    -> SystemT world m a
-    -> m a
-runSystemT w = flip evalStateT (0, w) . runSystemT'
-
-
-------------------------------------------------------------------------------
--- | Evaluate a 'System'.
-runSystem
-    :: world ('WorldOf Identity)
-    -> System world a
-    -> a
-runSystem = (runIdentity .) . runSystemT
-
-
-------------------------------------------------------------------------------
--- | Get the world.
-getWorld
-    :: Monad m
-    => SystemT world m (world ('WorldOf m))
-getWorld = SystemT $ gets snd
-
-
-------------------------------------------------------------------------------
--- | Only evaluate this 'QueryT' for entities which have the given component.
-with
-    :: Monad m
-    => (world 'FieldOf -> Maybe a)
-    -> QueryT world m ()
-with = void . query
-{-# INLINE with #-}
-
-
-------------------------------------------------------------------------------
--- | Only evaluate this 'QueryT' for entities which do not have the given
--- component.
-without
-    :: Monad m
-    => (world 'FieldOf -> Maybe a)
-    -> QueryT world m ()
-without f = do
-  e <- QueryT $ asks snd
-  maybe (pure ()) (const mzero) $ f e
-
-
-------------------------------------------------------------------------------
--- | Get the value of a component, failing the 'QueryT' if it isn't present.
-query
-    :: Monad m
-    => (world 'FieldOf -> Maybe a)
-    -> QueryT world m a
-query f = do
-  e <- QueryT $ asks snd
-  maybe mzero pure $ f e
-{-# INLINE query #-}
-
-
-------------------------------------------------------------------------------
--- | Attempt to get the value of a component.
-queryMaybe
-    :: Monad m
-    => (world 'FieldOf -> Maybe a)
-    -> QueryT world m (Maybe a)
-queryMaybe f = fmap f $ QueryT $ asks snd
-
-
-------------------------------------------------------------------------------
--- | Attempt to get the value of a component.
-queryEnt
-    :: Monad m
-    => QueryT world m Ent
-queryEnt = QueryT $ asks fst
-
-
-------------------------------------------------------------------------------
--- | Query a flag as a 'Bool'.
-queryFlag
-    :: Monad m
-    => (world 'FieldOf -> Maybe ())
-    -> QueryT world m Bool
-queryFlag = fmap (maybe False (const True)) . queryMaybe
-
-
-------------------------------------------------------------------------------
--- | Perform a query with a default.
-queryDef
-    :: Monad m
-    => z
-    -> (world 'FieldOf -> Maybe z)
-    -> QueryT world m z
-queryDef z = fmap (maybe z id) . queryMaybe
-
-
-------------------------------------------------------------------------------
--- | An 'EntTarget' is a set of 'Ent's to iterate over.
-type EntTarget world m = SystemT world m [Ent]
-
-
-------------------------------------------------------------------------------
--- | Iterate over all entities.
-allEnts :: Monad m => EntTarget world m
-allEnts = do
-  (es, _) <- SystemT get
-  pure $ Ent <$> [0 .. es - 1]
-
-
-------------------------------------------------------------------------------
--- | Iterate over some entities.
-someEnts :: Monad m => [Ent] -> EntTarget world m
-someEnts = pure
-
-
-------------------------------------------------------------------------------
--- | Iterate over an entity.
-anEnt :: Monad m => Ent -> EntTarget world m
-anEnt = pure . pure
-
-
-------------------------------------------------------------------------------
--- | Turn a 'Maybe' into an 'Update'.
-maybeToUpdate :: Maybe a -> Update a
-maybeToUpdate Nothing  = Unset
-maybeToUpdate (Just a) = Set a
 

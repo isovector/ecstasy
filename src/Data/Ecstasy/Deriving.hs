@@ -138,7 +138,7 @@ instance {-# OVERLAPPING #-} (Applicative m, KnownSymbol sym)
     where
       err :: err
       err = error $ mconcat
-            [ "unset vtable for Virtual component '"
+            [ "unset VTable for Virtual component '"
             , symbolVal $ Proxy @sym
             , "'"
             ]

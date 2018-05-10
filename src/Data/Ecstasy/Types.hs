@@ -91,8 +91,14 @@ instance MonadReader r m => MonadReader r (QueryT w m) where
   local f = QueryT . runQueryT' . local f
 
 
+------------------------------------------------------------------------------
+-- | A collection of methods necessary to dispatch reads and writes to
+-- a 'Virtual' component.
 data VTable m a = VTable
-  { vget :: !(Ent -> m (Maybe a))
+  { -- | Get the value of an entity's component.
+    vget :: !(Ent -> m (Maybe a))
+
+    -- | Update the value of an entity's component.
   , vset :: !(Ent -> Update a -> m ())
   }
 
@@ -111,7 +117,6 @@ data ComponentType
   = Field      -- ^ This component can be owned by any entity.
   | Unique     -- ^ This component can be owned by only a single entity at a time.
   | Virtual    -- ^ This component is owned by another system.
-  -- | Mandatory  -- ^ This component must exist.
 
 
 ------------------------------------------------------------------------------

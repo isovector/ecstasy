@@ -14,18 +14,18 @@ import Control.Monad.IO.Class (liftIO)
 main :: IO ()
 main = do
   e <- runSystemT (
-      defWorld
+      defStorage
       { say = VTable vgetSay vsetSay
       , sAY = VTable vgetSAY vsetSAY
       } ) $ do
-    void $ newEntity $ defEntity
+    void $ createEntity $ newEntity
         { pos = Just 0
         , vel = Just 1
         , ack = Just True
         , say = Just "hello"
         }
 
-    void $ newEntity $ defEntity
+    void $ createEntity $ newEntity
       { pos = Just 0
       , ack = Just False
       , sAY = Just "world"
@@ -35,7 +35,7 @@ main = do
       step = do
         pos' <- query pos
         vel' <- query vel
-        pure $ defEntity'
+        pure $ unchanged
           { pos = Set $ pos' + vel'
           }
     emap allEnts step
