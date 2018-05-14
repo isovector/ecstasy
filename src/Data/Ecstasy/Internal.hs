@@ -16,7 +16,7 @@ module Data.Ecstasy.Internal where
 
 import           Control.Arrow (first, second)
 import           Control.Monad (mzero, void)
-import           Control.Monad.Trans.Class (lift)
+import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Control.Monad.Trans.Maybe (runMaybeT)
 import           Control.Monad.Trans.Reader (runReaderT, asks)
 import           Control.Monad.Trans.State.Strict (modify, get, gets, evalStateT)
@@ -25,7 +25,9 @@ import           Data.Ecstasy.Internal.Deriving
 import qualified Data.Ecstasy.Types as T
 import           Data.Ecstasy.Types hiding (unEnt)
 import           Data.Foldable (for_)
+import           Data.Functor.Day.Curried (lowerCurried)
 import           Data.Functor.Identity (Identity (..))
+import           Data.Functor.Yoneda (lowerYoneda)
 import           Data.Maybe (catMaybes)
 import           Data.Traversable (for)
 import           Data.Tuple (swap)
@@ -55,7 +57,11 @@ class HasWorld' world => HasWorld world m where
       -> SystemT world m (world 'FieldOf)
   getEntity e = do
     w <- SystemT $ gets snd
-    lift . fmap to . gGetEntity @m (from w) $ T.unEnt e
+    lift . lowerYoneda
+         . lowerCurried
+         . fmap to
+         . gGetEntity @m (from w)
+         $ T.unEnt e
   {-# INLINE getEntity #-}
 
   ----------------------------------------------------------------------------
@@ -77,7 +83,11 @@ class HasWorld' world => HasWorld world m where
       -> SystemT world m ()
   setEntity e s = do
     w <- SystemT $ gets snd
-    x <- lift . fmap to . gSetEntity (from s) (T.unEnt e) $ from w
+    x <- lift . lowerYoneda
+              . lowerCurried
+              . fmap to
+              . gSetEntity (from s) (T.unEnt e)
+              $ from w
     SystemT . modify . second $ const x
   {-# INLINE setEntity #-}
 
@@ -172,6 +182,32 @@ instance ( HasWorld' world
                       (Rep (world 'FieldOf))
          , Monad m
          ) => HasWorld world m
+
+
+------------------------------------------------------------------------------
+-- | Hoist storage through a monad transformer.
+class HoistStorage t m world where
+  hoistStorage
+    :: world ('WorldOf m)
+    -> world ('WorldOf (t m))
+  default hoistStorage
+    :: ( Generic (world ('WorldOf m))
+       , Generic (world ('WorldOf (t m)))
+       , GHoistWorld t m
+                     (Rep (world ('WorldOf m)))
+                     (Rep (world ('WorldOf (t m))))
+       , MonadTrans t
+       )
+    => world ('WorldOf m)
+    -> world ('WorldOf (t m))
+  hoistStorage = to . gHoistWorld @t @m . from
+
+instance ( Generic (world ('WorldOf m))
+         , Generic (world ('WorldOf (t m)))
+         , GHoistWorld t m (Rep (world ('WorldOf m)))
+                           (Rep (world ('WorldOf (t m))))
+         , MonadTrans t
+         ) => HoistStorage t m world
 
 
 ------------------------------------------------------------------------------

@@ -2,5 +2,6 @@ flags: {}
 packages:
   - '.'
 
-extra-deps: []
+extra-deps:
+  - transformers-0.5.5.0
 resolver: lts-9.0

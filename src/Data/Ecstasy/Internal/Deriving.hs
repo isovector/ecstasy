@@ -12,12 +12,37 @@
 
 module Data.Ecstasy.Internal.Deriving where
 
+import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..))
+import           Data.Functor.Day.Curried (Curried (..))
+import           Data.Functor.Yoneda (Yoneda (..))
 import           Data.IntMap (IntMap)
 import qualified Data.IntMap as I
 import           Data.Proxy (Proxy (..))
 import           GHC.Generics
 import           GHC.TypeLits
+
+
+class GHoistWorld (t :: (* -> *) -> * -> *) (m :: * -> *) a b where
+  gHoistWorld :: a x -> b x
+
+
+instance {-# OVERLAPPING #-} (MonadTrans t, Functor (t m), Monad m)
+    => GHoistWorld t m (K1 i (VTable m a)) (K1 i' (VTable (t m) a)) where
+  gHoistWorld (K1 (VTable g s)) = K1 $ VTable (fmap lift g) (fmap (fmap lift) s)
+  {-# INLINE gHoistWorld #-}
+
+instance {-# OVERLAPPABLE #-} GHoistWorld t m (K1 i a) (K1 i' a) where
+  gHoistWorld (K1 a) = K1 a
+  {-# INLINE gHoistWorld #-}
+
+instance (Functor (t m), GHoistWorld t m f f') => GHoistWorld t m (M1 i c f) (M1 i' c' f') where
+  gHoistWorld (M1 a) = M1 $ gHoistWorld @t @m a
+  {-# INLINE gHoistWorld #-}
+
+instance (Applicative (t m), GHoistWorld t m a c, GHoistWorld t m b d) => GHoistWorld t m (a :*: b) (c :*: d) where
+  gHoistWorld (a :*: b) = gHoistWorld @t @m a :*: gHoistWorld @t @m b
+  {-# INLINE gHoistWorld #-}
 
 
 class GConvertSetter a b where
@@ -45,12 +70,20 @@ instance (GConvertSetter a c , GConvertSetter b d) => GConvertSetter (a :*: b) (
   {-# INLINE gConvertSetter #-}
 
 
+liftCurriedYoneda :: Applicative f => f a -> Curried (Yoneda f) (Yoneda f) a
+liftCurriedYoneda fa = Curried (`yap` fa)
+{-# INLINE liftCurriedYoneda #-}
+
+yap :: Applicative f => Yoneda f (a -> b) -> f a -> Yoneda f b
+yap (Yoneda k) fa = Yoneda (\ab_r -> k (ab_r .) <*> fa)
+{-# INLINE yap #-}
+
 class GGetEntity m a b where
-  gGetEntity :: a x -> Int -> m (b x)
+  gGetEntity :: a x -> Int -> Curried (Yoneda m) (Yoneda m) (b x)
 
 instance (Applicative m)
       => GGetEntity m (K1 i (VTable m a)) (K1 i' (Maybe a)) where
-  gGetEntity (K1 (VTable vget _)) e = fmap K1 $ vget $ Ent e
+  gGetEntity (K1 (VTable vget _)) e = liftCurriedYoneda $ fmap K1 $ vget $ Ent e
   {-# INLINE gGetEntity #-}
 
 instance Applicative m => GGetEntity m (K1 i (IntMap a)) (K1 i' (Maybe a)) where
@@ -72,7 +105,7 @@ instance (Applicative m, GGetEntity m a c , GGetEntity m b d) => GGetEntity m (a
 
 
 class GSetEntity m a b where
-  gSetEntity :: a x -> Int -> b x -> m (b x)
+  gSetEntity :: a x -> Int -> b x -> Curried (Yoneda m) (Yoneda m) (b x)
 
 instance Applicative m => GSetEntity m (K1 i (Update a)) (K1 i' (Maybe (Int, a))) where
   gSetEntity (K1 (Set a)) e _ = pure . K1 $ Just (e, a)
@@ -86,7 +119,7 @@ instance Applicative m => GSetEntity m (K1 i (Update a)) (K1 i' (Maybe (Int, a))
 instance (Applicative m)
       => GSetEntity m (K1 i (Update a)) (K1 i' (VTable m a)) where
   gSetEntity (K1 a) e (K1 z@(VTable _ vset)) =
-    vset (Ent e) a *> pure (K1 z)
+    liftCurriedYoneda (vset (Ent e) a) *> pure (K1 z)
   {-# INLINE gSetEntity #-}
 
 instance Applicative m => GSetEntity m (K1 i (Update a)) (K1 i' (IntMap a)) where
