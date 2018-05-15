@@ -1,5 +1,11 @@
 # Revision history for ecstasy
 
+## 0.2.1.0  -- 2018-05-15
+
+* Added the 'surgery' function to introduce temporary effects.
+* Significant performance improvements due to constructing monadic generic
+    functions via 'Codensity'.
+
 ## 0.2.0.1  -- 2018-05-10
 
 * Also export 'StorageType'.

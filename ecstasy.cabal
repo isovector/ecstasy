@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                ecstasy
-version:             0.2.0.1
+version:             0.2.1.0
 synopsis:
   A GHC.Generics based entity component system.
 
