@@ -12,10 +12,9 @@
 
 module Data.Ecstasy.Internal.Deriving where
 
+import           Control.Monad.Codensity
 import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..))
-import           Data.Functor.Day.Curried (Curried (..))
-import           Data.Functor.Yoneda (Yoneda (..))
 import           Data.IntMap (IntMap)
 import qualified Data.IntMap as I
 import           Data.Proxy (Proxy (..))
@@ -70,20 +69,12 @@ instance (GConvertSetter a c , GConvertSetter b d) => GConvertSetter (a :*: b) (
   {-# INLINE gConvertSetter #-}
 
 
-liftCurriedYoneda :: Applicative f => f a -> Curried (Yoneda f) (Yoneda f) a
-liftCurriedYoneda fa = Curried (`yap` fa)
-{-# INLINE liftCurriedYoneda #-}
-
-yap :: Applicative f => Yoneda f (a -> b) -> f a -> Yoneda f b
-yap (Yoneda k) fa = Yoneda (\ab_r -> k (ab_r .) <*> fa)
-{-# INLINE yap #-}
-
 class GGetEntity m a b where
-  gGetEntity :: a x -> Int -> Curried (Yoneda m) (Yoneda m) (b x)
+  gGetEntity :: a x -> Int -> Codensity m (b x)
 
-instance (Applicative m)
+instance (Monad m)
       => GGetEntity m (K1 i (VTable m a)) (K1 i' (Maybe a)) where
-  gGetEntity (K1 (VTable vget _)) e = liftCurriedYoneda $ fmap K1 $ vget $ Ent e
+  gGetEntity (K1 (VTable vget _)) e = lift $ fmap K1 $ vget $ Ent e
   {-# INLINE gGetEntity #-}
 
 instance Applicative m => GGetEntity m (K1 i (IntMap a)) (K1 i' (Maybe a)) where
@@ -105,7 +96,7 @@ instance (Applicative m, GGetEntity m a c , GGetEntity m b d) => GGetEntity m (a
 
 
 class GSetEntity m a b where
-  gSetEntity :: a x -> Int -> b x -> Curried (Yoneda m) (Yoneda m) (b x)
+  gSetEntity :: a x -> Int -> b x -> Codensity m (b x)
 
 instance Applicative m => GSetEntity m (K1 i (Update a)) (K1 i' (Maybe (Int, a))) where
   gSetEntity (K1 (Set a)) e _ = pure . K1 $ Just (e, a)
@@ -116,10 +107,10 @@ instance Applicative m => GSetEntity m (K1 i (Update a)) (K1 i' (Maybe (Int, a))
   gSetEntity _  _ (K1 b) = pure $ K1 b
   {-# INLINE gSetEntity #-}
 
-instance (Applicative m)
+instance (Monad m)
       => GSetEntity m (K1 i (Update a)) (K1 i' (VTable m a)) where
   gSetEntity (K1 a) e (K1 z@(VTable _ vset)) =
-    liftCurriedYoneda (vset (Ent e) a) *> pure (K1 z)
+    lift (vset (Ent e) a) *> pure (K1 z)
   {-# INLINE gSetEntity #-}
 
 instance Applicative m => GSetEntity m (K1 i (Update a)) (K1 i' (IntMap a)) where

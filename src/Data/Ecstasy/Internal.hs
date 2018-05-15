@@ -16,6 +16,7 @@ module Data.Ecstasy.Internal where
 
 import           Control.Arrow (first, second)
 import           Control.Monad (mzero, void)
+import           Control.Monad.Codensity (lowerCodensity)
 import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Control.Monad.Trans.Maybe (runMaybeT)
 import           Control.Monad.Trans.Reader (runReaderT, asks)
@@ -25,9 +26,7 @@ import           Data.Ecstasy.Internal.Deriving
 import qualified Data.Ecstasy.Types as T
 import           Data.Ecstasy.Types hiding (unEnt)
 import           Data.Foldable (for_)
-import           Data.Functor.Day.Curried (lowerCurried)
 import           Data.Functor.Identity (Identity (..))
-import           Data.Functor.Yoneda (lowerYoneda)
 import           Data.Maybe (catMaybes)
 import           Data.Traversable (for)
 import           Data.Tuple (swap)
@@ -57,8 +56,7 @@ class HasWorld' world => HasWorld world m where
       -> SystemT world m (world 'FieldOf)
   getEntity e = do
     w <- SystemT $ gets snd
-    lift . lowerYoneda
-         . lowerCurried
+    lift . lowerCodensity
          . fmap to
          . gGetEntity @m (from w)
          $ T.unEnt e
@@ -83,8 +81,7 @@ class HasWorld' world => HasWorld world m where
       -> SystemT world m ()
   setEntity e s = do
     w <- SystemT $ gets snd
-    x <- lift . lowerYoneda
-              . lowerCurried
+    x <- lift . lowerCodensity
               . fmap to
               . gSetEntity (from s) (T.unEnt e)
               $ from w
