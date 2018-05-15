@@ -235,7 +235,7 @@ instance ( Generic (world ('WorldOf m))
 
 
 ------------------------------------------------------------------------------
--- | Run a monad transformer *underneath* a 'SystemT'.
+-- | Run a monad transformer /underneath/ a 'SystemT'.
 --
 -- Due to the recursive interactions between 'SystemT' and 'QueryT', we're
 -- often unable to put a temporary monad transformer on the top of the stack.
@@ -245,7 +245,7 @@ instance ( Generic (world ('WorldOf m))
 -- @
 -- draw :: 'SystemT' World IO [Graphics]
 -- draw = fmap fst . 'surgery' runWriterT $
---   for_ thingsToRender $ \thingy ->
+--   for_ thingsToRender $ \\thingy ->
 --     tell [thingy]
 -- @
 surgery
