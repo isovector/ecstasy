@@ -6,6 +6,7 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MonoLocalBinds         #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TupleSections          #-}
 {-# LANGUAGE TypeApplications       #-}
@@ -20,7 +21,7 @@ import           Control.Monad.Codensity (lowerCodensity)
 import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Control.Monad.Trans.Maybe (runMaybeT)
 import           Control.Monad.Trans.Reader (runReaderT, asks)
-import           Control.Monad.Trans.State.Strict (modify, get, gets, evalStateT)
+import           Control.Monad.Trans.State.Strict (StateT (..), modify, get, gets, evalStateT)
 import qualified Control.Monad.Trans.State.Strict as S
 import           Data.Ecstasy.Internal.Deriving
 import qualified Data.Ecstasy.Types as T
@@ -97,6 +98,7 @@ class HasWorld' world => HasWorld world m where
          )
       => world ('WorldOf m)
   defStorage = def @'True
+  {-# INLINE defStorage #-}
 
 
 class HasWorld' world where
@@ -182,8 +184,10 @@ instance ( HasWorld' world
 
 
 ------------------------------------------------------------------------------
--- | Hoist storage through a monad transformer.
-class HoistStorage t m world where
+-- | Utilities for defining 'surgery'.
+class StorageSurgeon t m world where
+  ----------------------------------------------------------------------------
+  -- | Hoist storage through a monad transformer.
   hoistStorage
     :: world ('WorldOf m)
     -> world ('WorldOf (t m))
@@ -198,13 +202,63 @@ class HoistStorage t m world where
     => world ('WorldOf m)
     -> world ('WorldOf (t m))
   hoistStorage = to . gHoistWorld @t @m . from
+  {-# INLINE hoistStorage #-}
+
+  ----------------------------------------------------------------------------
+  -- | Grafts two worlds together, using data from the second argument and
+  -- vtables from the first.
+  graftStorage
+    :: world ('WorldOf m)
+    -> world ('WorldOf (t m))
+    -> world ('WorldOf m)
+  default graftStorage
+    :: ( Generic (world ('WorldOf m))
+       , Generic (world ('WorldOf (t m)))
+       , GGraft (Rep (world ('WorldOf m)))
+                (Rep (world ('WorldOf (t m))))
+       )
+    => world ('WorldOf m)
+    -> world ('WorldOf (t m))
+    -> world ('WorldOf m)
+  graftStorage a b = to $ gGraft (from a) (from b)
+  {-# INLINE graftStorage #-}
+
 
 instance ( Generic (world ('WorldOf m))
          , Generic (world ('WorldOf (t m)))
          , GHoistWorld t m (Rep (world ('WorldOf m)))
                            (Rep (world ('WorldOf (t m))))
+         , GGraft (Rep (world ('WorldOf m)))
+                  (Rep (world ('WorldOf (t m))))
          , MonadTrans t
-         ) => HoistStorage t m world
+         ) => StorageSurgeon t m world
+
+
+------------------------------------------------------------------------------
+-- | Run a monad transformer *underneath* a 'SystemT'.
+--
+-- Due to the recursive interactions between 'SystemT' and 'QueryT', we're
+-- often unable to put a temporary monad transformer on the top of the stack.
+-- As a result, often 'surgery' is our ony means of introducting ephemeral
+-- effects.
+--
+-- @
+-- draw :: 'SystemT' World IO [Graphics]
+-- draw = fmap fst . 'surgery' runWriterT $
+--   for_ thingsToRender $ \thingy ->
+--     tell [thingy]
+-- @
+surgery
+    :: ( Monad (t m)
+       , Monad m
+       , StorageSurgeon t m world
+       )
+    => (forall x. t m x -> m (x, b))
+    -> SystemT world (t m) a
+    -> SystemT world m (b, a)
+surgery f m = SystemT $ StateT $ \(i, s) -> do
+  (((i', s'), a), b) <- f $ yieldSystemT (i, hoistStorage s) m
+  pure ((b, a), (i', graftStorage s s'))
 
 
 ------------------------------------------------------------------------------

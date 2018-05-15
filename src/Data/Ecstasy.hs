@@ -89,6 +89,9 @@ module Data.Ecstasy
   , Update (..)
   , maybeToUpdate
 
+  -- * Introducing effects
+  , surgery
+
   -- * Miscellany
   , Ent ()
   , VTable (..)
@@ -153,7 +156,7 @@ import GHC.Generics
 --              }
 --          }
 --    'runSystemT' storage $ do
---      void $ 'createEntity' 'unchanged
+--      void $ 'createEntity' 'newEntity'
 --        { stdout = Just "hello world"
 --        }
 -- @
