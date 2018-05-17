@@ -18,8 +18,8 @@ import           Control.Monad (mzero, void)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Maybe (runMaybeT)
 import           Control.Monad.Trans.Reader (runReaderT, ask)
-import           Control.Monad.Trans.State (modify, gets, evalStateT)
-import qualified Control.Monad.Trans.State as S
+import           Control.Monad.Trans.State.Strict (modify, gets, evalStateT)
+import qualified Control.Monad.Trans.State.Strict as S
 import           Data.Ecstasy.Deriving
 import qualified Data.Ecstasy.Types as T
 import           Data.Ecstasy.Types hiding (unEnt)
@@ -93,6 +93,7 @@ class HasWorld world where
       => world 'FieldOf
       -> world 'SetterOf
   convertSetter = to . gConvertSetter . from
+  {-# INLINE convertSetter #-}
 
   ----------------------------------------------------------------------------
   -- | The default entity, owning no components.
@@ -103,6 +104,7 @@ class HasWorld world where
          )
       => world 'FieldOf
   defEntity = def @'True
+  {-# INLINE defEntity #-}
 
   ----------------------------------------------------------------------------
   -- | The default setter, which keeps all components with their previous value.
@@ -113,6 +115,7 @@ class HasWorld world where
          )
       => world 'SetterOf
   defEntity' = def @'True
+  {-# INLINE defEntity' #-}
 
   ----------------------------------------------------------------------------
   -- | A setter which will delete the entity if its 'QueryT' matches.
@@ -123,6 +126,7 @@ class HasWorld world where
          )
       => world 'SetterOf
   delEntity = def @'False
+  {-# INLINE delEntity #-}
 
   ----------------------------------------------------------------------------
   -- | The default world, which contains only empty containers.
@@ -133,6 +137,7 @@ class HasWorld world where
          )
       => world 'WorldOf
   defWorld = def @'True
+  {-# INLINE defWorld #-}
 
 
 instance ( Generic (world 'SetterOf)

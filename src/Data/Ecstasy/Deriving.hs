@@ -11,8 +11,8 @@
 module Data.Ecstasy.Deriving where
 
 import           Data.Ecstasy.Types (Update (..))
-import           Data.IntMap (IntMap)
-import qualified Data.IntMap as I
+import           Data.IntMap.Strict (IntMap)
+import qualified Data.IntMap.Strict as I
 import           GHC.Generics
 
 
