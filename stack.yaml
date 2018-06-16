@@ -1,7 +1,10 @@
 flags: {}
 packages:
   - '.'
+  - extra-dep: true
+    location:
+      git: https://github.com/nomeata/inspection-testing.git
+      commit: 0804c708092fed595dc4650afdd048dc1234ea4d
 
-extra-deps:
-  - transformers-0.5.5.0
-resolver: lts-9.0
+extra-deps: []
+resolver: lts-11.9
