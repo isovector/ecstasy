@@ -6,6 +6,7 @@
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
@@ -244,23 +245,23 @@ class GCommand w i o where
 
 
 instance GCommand w (K1 _i (IntMap a))
-                    (K1 _i' (w -> (IntMap a, Maybe IntSet))) where
+                    (K1 _i' (w -> Maybe IntSet)) where
   type Commands w
                (K1 _i (IntMap a))
-               (K1 _i' (w -> (IntMap a, Maybe IntSet))) = '[a]
+               (K1 _i' (w -> Maybe IntSet)) = '[a]
   gCommand f = K1 $ \w ->
     let v = unK1 $ f w
-     in (v, Just $ I.keysSet v)
+     in Just $ I.keysSet v
   {-# INLINE gCommand #-}
 
 instance GCommand w (K1 _i (Maybe (Int, a)))
-                    (K1 _i' (w -> (Maybe (Int, a), Maybe IntSet))) where
+                    (K1 _i' (w -> Maybe IntSet)) where
   type Commands w
                (K1 _i (Maybe (Int, a)))
-               (K1 _i' (w -> (Maybe (Int, a), Maybe IntSet))) = '[a]
+               (K1 _i' (w -> Maybe IntSet)) = '[a]
   gCommand f = K1 $ \w ->
     let v = unK1 $ f w
-     in (v, Just $ maybe IS.empty (IS.singleton . fst) v)
+     in Just $ maybe IS.empty (IS.singleton . fst) v
   {-# INLINE gCommand #-}
 
 instance GCommand w i o => GCommand w (M1 _i _c i) (M1 _i' _c' o) where
@@ -280,12 +281,12 @@ command
     :: forall world m worldOf
      . ( GCommand (world ('WorldOf m))
                   (Rep worldOf)
-                  (Rep (world ('FreeOf worldOf)))
+                  (Rep (world ('FreeOf worldOf m)))
        , Generic worldOf
-       , Generic (world ('FreeOf worldOf))
+       , Generic (world ('FreeOf worldOf m))
        , worldOf ~ world ('WorldOf m)
        )
-    => world ('FreeOf (world ('WorldOf m)))
+    => world ('FreeOf (world ('WorldOf m)) m)
 command = to $ gCommand @worldOf from
 {-# INLINE command #-}
 
@@ -293,20 +294,24 @@ command = to $ gCommand @worldOf from
  -- world ('WorldOf m) -> Component ('FreeOf (world ('WorldOf m))) z a
 
 magic
-    :: forall world m a
+    :: forall c world m a
      . ( GCommand (world ('WorldOf m))
                   (Rep (world ('WorldOf m)))
-                  (Rep (world ('FreeOf (world ('WorldOf m)))))
+                  (Rep (world ('FreeOf (world ('WorldOf m)) m)))
        , Generic (world ('WorldOf m))
-       , Generic (world ('FreeOf (world ('WorldOf m))))
+       , Generic (world ('FreeOf (world ('WorldOf m)) m))
        )
-    => ( world ('FreeOf (world ('WorldOf m)))
-      -> Component ('FreeOf (world ('WorldOf m))) 'Field a
-       )
+    => ( forall s. world s -> Component s c a )
     -> Free (Zoom world m) a
 magic f =
   let sel = f $ command @world
-      in liftF . Zoom . EmbedAt undefined $ Heckin (sel) Just
+      in liftF . Zoom . EmbedAt undefined $ Heckin sel f Just
+
+
+-- getEnts :: Free (Zoom world m) a -> IntSet
+-- getEnts = iter f
+--   where
+--     f (Zoom z = _
 
 
 type family xs :++ ys where
@@ -315,19 +320,20 @@ type family xs :++ ys where
 
 newtype Zoom w m a = Zoom
   { unZoom
-      :: Heckin (w ('WorldOf m)) a
+      :: Heckin w m a
       :| Commands (w ('WorldOf m))
                   (Rep (w ('WorldOf m)))
-                  (Rep (w ('FreeOf (w ('WorldOf m)))))
+                  (Rep (w ('FreeOf (w ('WorldOf m)) m)))
   }
 
 instance Functor (Zoom w f) where
-  fmap f (Zoom (EmbedAt m (Heckin r k))) =
-    Zoom . EmbedAt m . Heckin r $ fmap f . k
+  fmap f (Zoom (EmbedAt m (Heckin r s k))) =
+    Zoom . EmbedAt m . Heckin r s $ fmap f . k
   {-# INLINE fmap #-}
 
-data Heckin w b a = Heckin
-  { heckinRelevant :: w -> (Maybe a, Maybe IntSet)
+data Heckin w m b a = Heckin
+  { heckinRelevant :: w ('WorldOf m) -> Maybe IntSet
+  , heckinSelector :: w 'FieldOf -> Maybe a
   , heckinCont     :: a -> Maybe b
   }
 

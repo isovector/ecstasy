@@ -76,6 +76,7 @@ world = defStorage
 -- inspect $ hasNoGenerics 'world
 -- inspect $ hasNoType 'world ''Codensity
 
+
 zoo
     :: ( Monad m
        )
