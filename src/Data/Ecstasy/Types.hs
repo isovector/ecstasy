@@ -14,6 +14,7 @@
 
 module Data.Ecstasy.Types where
 
+import Data.IntSet (IntSet)
 import Control.Applicative (Alternative)
 import Control.Monad (MonadPlus)
 import Control.Monad.IO.Class (MonadIO)
@@ -109,6 +110,7 @@ data StorageType
   = FieldOf   -- ^ Used to describe the actual entity.
   | WorldOf (Type -> Type)  -- ^ Used to construct the world's storage.
   | SetterOf  -- ^ Used to construct a setter to update an entity.
+  | FreeOf Type
 
 
 ------------------------------------------------------------------------------
@@ -133,6 +135,8 @@ data Update a
 type family Component (s :: StorageType)
                       (c :: ComponentType)
                       (a :: Type) :: Type where
+  Component ('FreeOf w)  c   a = w -> (Component 'FieldOf c a, IntSet)
+
   Component 'FieldOf  c      a = Maybe a
   Component 'SetterOf c      a = Update a
 

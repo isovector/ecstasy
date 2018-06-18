@@ -5,17 +5,25 @@
 {-# LANGUAGE KindSignatures            #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE PolyKinds                 #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
+{-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UndecidableInstances      #-}
 
 module Data.Ecstasy.Internal.Deriving where
 
+import Control.Arrow (first)
+import Control.Monad (join)
+import Control.Monad.Free
 import           Control.Monad.Codensity
 import           Control.Monad.Trans.Class (MonadTrans (..))
-import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..))
+import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..), StorageType (..), Component)
+import           Data.Extensible.Sum
 import           Data.IntMap (IntMap)
+import           Data.IntSet (IntSet)
+import qualified Data.IntSet as IS
 import qualified Data.IntMap as I
 import           Data.Proxy (Proxy (..))
 import           GHC.Generics
@@ -225,4 +233,89 @@ instance (GDefault keep a, GDefault keep b)
     => GDefault keep (a :*: b) where
   gdef = gdef @keep :*: gdef @keep
   {-# INLINE gdef #-}
+
+
+------------------------------------------------------------------------------
+-- |
+
+class GCommand w i o where
+  type Commands w i o :: [*]
+  gCommand :: (w -> i x) -> o x
+
+
+instance GCommand w (K1 _i (IntMap a))
+                    (K1 _i' (w -> (IntMap a, Maybe IntSet))) where
+  type Commands w
+               (K1 _i (IntMap a))
+               (K1 _i' (w -> (IntMap a, Maybe IntSet))) = '[a]
+  gCommand f = K1 $ \w ->
+    let v = unK1 $ f w
+     in (v, Just $ I.keysSet v)
+  {-# INLINE gCommand #-}
+
+instance GCommand w (K1 _i (Maybe (Int, a)))
+                    (K1 _i' (w -> (Maybe (Int, a), Maybe IntSet))) where
+  type Commands w
+               (K1 _i (Maybe (Int, a)))
+               (K1 _i' (w -> (Maybe (Int, a), Maybe IntSet))) = '[a]
+  gCommand f = K1 $ \w ->
+    let v = unK1 $ f w
+     in (v, Just $ maybe IS.empty (IS.singleton . fst) v)
+  {-# INLINE gCommand #-}
+
+instance GCommand w i o => GCommand w (M1 _i _c i) (M1 _i' _c' o) where
+  type Commands w (M1 _i _c i) (M1 _i' _c' o) = Commands w i o
+  gCommand f = M1 . gCommand $ unM1 . f
+  {-# INLINE gCommand #-}
+
+instance (GCommand w i o, GCommand w i' o')
+    => GCommand w (i :*: i') (o :*: o') where
+  type Commands w (i :*: i') (o :*: o') = Commands w i o :++ Commands w i' o'
+  gCommand f = gCommand ((\(a :*: _) -> a) . f)
+           :*: gCommand ((\(_ :*: b) -> b) . f)
+  {-# INLINE gCommand #-}
+
+
+command
+    :: forall world m worldOf
+     . ( GCommand (world ('WorldOf m))
+                  (Rep worldOf)
+                  (Rep (world ('FreeOf worldOf)))
+       , Generic worldOf
+       , Generic (world ('FreeOf worldOf))
+       , worldOf ~ world ('WorldOf m)
+       )
+    => world ('FreeOf (world ('WorldOf m)))
+command = to $ gCommand @worldOf from
+{-# INLINE command #-}
+
+
+ -- world ('WorldOf m) -> Component ('FreeOf (world ('WorldOf m))) z a
+
+magic
+    :: (world ('WorldOf m) -> Component ('FreeOf (world ('WorldOf m))) z a)
+    -> Free (Zoom world m) a
+magic = liftF . Zoom . EmbedAt undefined . Flip . join
+
+
+type family xs :++ ys where
+  '[] :++ ys = ys
+  (x ': xs) :++ ys = x ': (xs :++ ys)
+
+newtype Zoom w m a = Zoom
+  { unZoom
+      :: Flip (->) (Maybe a, IntSet)
+      :| Commands (w ('WorldOf m))
+                  (Rep (w ('WorldOf m)))
+                  (Rep (w ('FreeOf (w ('WorldOf m)))))
+  }
+
+instance Functor (Zoom w f) where
+  fmap f (Zoom (EmbedAt m (Flip h))) =
+    Zoom . EmbedAt m . Flip $ first (fmap f) . h
+  {-# INLINE fmap #-}
+
+newtype Flip p a b = Flip { runFlip :: p b a }
+
+-- -- zoo2 :: Codensity (Free (Flip (->)
 
