@@ -14,6 +14,9 @@
 
 module InspectionSpec where
 
+
+import Data.IntMap (IntMap)
+import Data.IntSet (IntSet)
 import Data.Extensible.Sum
 import Data.Extensible.Internal
 import Control.Monad.Free
@@ -32,9 +35,15 @@ import Data.Ecstasy.Internal.Deriving
 data World s = World
   { field   :: Component s 'Field   Int
   , unique  :: Component s 'Unique  Bool
-  , virtual :: Component s 'Virtual String
+  -- , virtual :: Component s 'Virtual String
   }
   deriving (Generic)
+
+data WorldF m a
+  = FieldF   (World ('WorldOf m) -> IntSet) (Int -> a)
+  | UniqueF  (World ('WorldOf m) -> IntSet) (Bool -> a)
+  -- | VirtualF (World ('WorldOf m) -> IntSet) (String -> a)
+
 
 getField :: Monad m => QueryT World m Int
 getField = query field
@@ -42,8 +51,8 @@ getField = query field
 getUnique :: Monad m => QueryT World m Bool
 getUnique = query unique
 
-getVirtual :: Monad m => QueryT World m String
-getVirtual = query virtual
+-- getVirtual :: Monad m => QueryT World m String
+-- getVirtual = query virtual
 
 setter :: World 'SetterOf
 setter = unchanged
@@ -67,9 +76,12 @@ world = defStorage
 -- inspect $ hasNoGenerics 'world
 -- inspect $ hasNoType 'world ''Codensity
 
--- zoo :: Free (Zoom World) Bool
--- zoo = do
---   magic unique
+zoo
+    :: ( Monad m
+       )
+    => Free (Zoom World m) Bool
+zoo = do
+  magic unique
 
 -- magic
 --     :: forall a sym

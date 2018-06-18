@@ -19,7 +19,7 @@ import Control.Monad (join)
 import Control.Monad.Free
 import           Control.Monad.Codensity
 import           Control.Monad.Trans.Class (MonadTrans (..))
-import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..), StorageType (..), Component)
+import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..), StorageType (..), ComponentType (..), Component)
 import           Data.Extensible.Sum
 import           Data.IntMap (IntMap)
 import           Data.IntSet (IntSet)
@@ -293,9 +293,20 @@ command = to $ gCommand @worldOf from
  -- world ('WorldOf m) -> Component ('FreeOf (world ('WorldOf m))) z a
 
 magic
-    :: (world ('WorldOf m) -> Component ('FreeOf (world ('WorldOf m))) z a)
+    :: forall world m a
+     . ( GCommand (world ('WorldOf m))
+                  (Rep (world ('WorldOf m)))
+                  (Rep (world ('FreeOf (world ('WorldOf m)))))
+       , Generic (world ('WorldOf m))
+       , Generic (world ('FreeOf (world ('WorldOf m))))
+       )
+    => ( world ('FreeOf (world ('WorldOf m)))
+      -> Component ('FreeOf (world ('WorldOf m))) 'Field a
+       )
     -> Free (Zoom world m) a
-magic = liftF . Zoom . EmbedAt undefined . Flip . join
+magic f =
+  let sel = f $ command @world
+      in liftF . Zoom . EmbedAt undefined $ Heckin (sel) Just
 
 
 type family xs :++ ys where
@@ -304,18 +315,21 @@ type family xs :++ ys where
 
 newtype Zoom w m a = Zoom
   { unZoom
-      :: Flip (->) (Maybe a, IntSet)
+      :: Heckin (w ('WorldOf m)) a
       :| Commands (w ('WorldOf m))
                   (Rep (w ('WorldOf m)))
                   (Rep (w ('FreeOf (w ('WorldOf m)))))
   }
 
 instance Functor (Zoom w f) where
-  fmap f (Zoom (EmbedAt m (Flip h))) =
-    Zoom . EmbedAt m . Flip $ first (fmap f) . h
+  fmap f (Zoom (EmbedAt m (Heckin r k))) =
+    Zoom . EmbedAt m . Heckin r $ fmap f . k
   {-# INLINE fmap #-}
 
-newtype Flip p a b = Flip { runFlip :: p b a }
+data Heckin w b a = Heckin
+  { heckinRelevant :: w -> (Maybe a, Maybe IntSet)
+  , heckinCont     :: a -> Maybe b
+  }
 
 -- -- zoo2 :: Codensity (Free (Flip (->)
 
