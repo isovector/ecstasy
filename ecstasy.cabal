@@ -39,7 +39,7 @@ library
                  , Data.Ecstasy.Internal
                  , Data.Ecstasy.Internal.Deriving
   -- other-extensions:
-  build-depends:       base >=4.9 && <5, containers, mtl, transformers, kan-extensions, inspection-testing, template-haskell
+  build-depends:       base >=4.9 && <5, containers, mtl, transformers, kan-extensions, inspection-testing, template-haskell, free
   hs-source-dirs:      src
   default-language:    Haskell2010
 
