@@ -139,8 +139,8 @@ instance Exception Curse
 -- | A 'curse' is unholy tretchery whose evaluation can be caught in the
 -- 'Accursed' monad. It can be used to follow continuations in a free monad
 -- until it branches.
-curse :: a
-curse = throw Curse
+curse :: Functor f => Accursed f a
+curse = pure $ throw Curse
 
 
 ------------------------------------------------------------------------------
@@ -179,8 +179,10 @@ instance GChannel p V1 where
   gchannel _ = undefined
   {-# INLINE gchannel #-}
 
-instance GChannel p (Rec1 ((->) a)) where
-  gchannel (Rec1 z) = z curse
+instance Functor p => GChannel p (Rec1 ((->) a)) where
+  gchannel (Rec1 z) = do
+    c <- curse
+    z c
   {-# INLINE gchannel #-}
 
 instance GChannel p Par1 where
@@ -242,4 +244,8 @@ channel = gchannel . from1
 --   = Cont (Bool -> a)
 --   | Action Int a
 --   deriving (Functor, Generic, Generic1)
+
+-- instance Show (Pattern a) where
+--   show (Cont _) = "Cont"
+--   show (Action _ _ ) = "Action"
 
