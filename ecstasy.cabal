@@ -49,4 +49,7 @@ Test-Suite tests
   other-modules:    InspectionSpec
   hs-Source-Dirs:   test
   main-is:          Main.hs
-  build-depends:    base >=4.9 && <5, containers, mtl, transformers, hspec, ecstasy, inspection-testing, kan-extensions, template-haskell
+  build-depends:    base >=4.9 && <5, containers, mtl, transformers, hspec, ecstasy, kan-extensions
+  if impl(ghc > 8.0.1)
+    build-depends: inspection-testing >= 0.3 && <0.4
+                 , template-haskell

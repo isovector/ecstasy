@@ -110,7 +110,7 @@ data StorageType
   = FieldOf   -- ^ Used to describe the actual entity.
   | WorldOf (Type -> Type)  -- ^ Used to construct the world's storage.
   | SetterOf  -- ^ Used to construct a setter to update an entity.
-  | FreeOf Type (Type -> Type)
+  | FreeOf (StorageType -> Type) (Type -> Type)
 
 
 ------------------------------------------------------------------------------
@@ -135,7 +135,7 @@ data Update a
 type family Component (s :: StorageType)
                       (c :: ComponentType)
                       (a :: Type) :: Type where
-  Component ('FreeOf w m) c        a = w -> Maybe IntSet
+  Component ('FreeOf w m) c        a = w ('WorldOf m) -> Maybe IntSet
 
   Component 'FieldOf      c        a = Maybe a
   Component 'SetterOf     c        a = Update a

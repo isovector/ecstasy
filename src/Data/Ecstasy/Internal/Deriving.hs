@@ -29,6 +29,7 @@ import qualified Data.IntMap as I
 import           Data.Proxy (Proxy (..))
 import           GHC.Generics
 import           GHC.TypeLits
+import Unsafe.Coerce
 
 
 ------------------------------------------------------------------------------
@@ -264,6 +265,14 @@ instance GCommand w (K1 _i (Maybe (Int, a)))
      in Just $ maybe IS.empty (IS.singleton . fst) v
   {-# INLINE gCommand #-}
 
+instance GCommand w (K1 _i (VTable m a))
+                    (K1 _i' (w -> Maybe IntSet)) where
+  type Commands w
+               (K1 _i (VTable m a))
+               (K1 _i' (w -> Maybe IntSet)) = '[a]
+  gCommand f = K1 $ \w -> Nothing
+  {-# INLINE gCommand #-}
+
 instance GCommand w i o => GCommand w (M1 _i _c i) (M1 _i' _c' o) where
   type Commands w (M1 _i _c i) (M1 _i' _c' o) = Commands w i o
   gCommand f = M1 . gCommand $ unM1 . f
@@ -281,12 +290,12 @@ command
     :: forall world m worldOf
      . ( GCommand (world ('WorldOf m))
                   (Rep worldOf)
-                  (Rep (world ('FreeOf worldOf m)))
+                  (Rep (world ('FreeOf world m)))
        , Generic worldOf
-       , Generic (world ('FreeOf worldOf m))
+       , Generic (world ('FreeOf world m))
        , worldOf ~ world ('WorldOf m)
        )
-    => world ('FreeOf (world ('WorldOf m)) m)
+    => world ('FreeOf world m)
 command = to $ gCommand @worldOf from
 {-# INLINE command #-}
 
@@ -294,17 +303,18 @@ command = to $ gCommand @worldOf from
  -- world ('WorldOf m) -> Component ('FreeOf (world ('WorldOf m))) z a
 
 magic
-    :: forall c world m a
+    :: forall c world m mf a
      . ( GCommand (world ('WorldOf m))
                   (Rep (world ('WorldOf m)))
-                  (Rep (world ('FreeOf (world ('WorldOf m)) m)))
+                  (Rep (world ('FreeOf world m)))
        , Generic (world ('WorldOf m))
-       , Generic (world ('FreeOf (world ('WorldOf m)) m))
+       , Generic (world ('FreeOf world m))
+       , MonadFree (Zoom world m) mf
        )
-    => ( forall s. world s -> Component s c a )
-    -> Free (Zoom world m) a
+    => ( world 'FieldOf -> Component 'FieldOf c a )
+    -> mf a
 magic f =
-  let sel = f $ command @world
+  let sel = unsafeCoerce f $ command @world @m
       in liftF . Zoom . EmbedAt undefined $ Heckin sel f Just
 
 
@@ -323,7 +333,7 @@ newtype Zoom w m a = Zoom
       :: Heckin w m a
       :| Commands (w ('WorldOf m))
                   (Rep (w ('WorldOf m)))
-                  (Rep (w ('FreeOf (w ('WorldOf m)) m)))
+                  (Rep (w ('FreeOf w m)))
   }
 
 instance Functor (Zoom w f) where

@@ -1,13 +1,16 @@
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies          #-}
 
 module Main where
 
+import Control.Monad.Free
 import Data.Char (toUpper)
 import Data.Ecstasy
+import Data.Ecstasy.Internal.Deriving
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 
@@ -67,5 +70,8 @@ vsetSay _ _ = pure ()
 vgetSAY _ = pure Nothing
 vsetSAY _ (Set msg) = putStrLn $ fmap toUpper msg
 vsetSAY _ _ = pure ()
+
+zoom :: MonadFree (Zoom Entity m) mf => mf Int
+zoom = magic pos
 
 
