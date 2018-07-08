@@ -1,19 +1,24 @@
+{-# LANGUAGE CPP             #-}
 {-# LANGUAGE DataKinds       #-}
 {-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE TemplateHaskell #-}
 
+#if MIN_VERSION_base(4,9,1)
 {-# OPTIONS_GHC -O -fplugin Test.Inspection.Plugin #-}
-{-# OPTIONS_GHC -ddump-simpl #-}
+#endif
 
 
 module InspectionSpec where
 
 import Control.Monad.Codensity
-import Language.Haskell.TH
 import GHC.Generics
 import Data.Ecstasy
-import Test.Inspection
 import Test.Hspec
+
+#if MIN_VERSION_base(4,9,1)
+import Language.Haskell.TH
+import Test.Inspection
+#endif
 
 spec :: Spec
 spec = pure ()
@@ -42,6 +47,7 @@ world :: World ('WorldOf IO)
 world = defStorage
 
 
+#if MIN_VERSION_base(4,9,1)
 inspect $ hasNoGenerics 'getField
 inspect $ hasNoType 'getField ''Codensity
 
@@ -56,4 +62,5 @@ inspect $ hasNoType 'setter ''Codensity
 
 inspect $ hasNoGenerics 'world
 inspect $ hasNoType 'world ''Codensity
+#endif
 
