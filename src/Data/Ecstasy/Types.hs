@@ -135,7 +135,7 @@ data Update a
 type family Component (s :: StorageType)
                       (c :: ComponentType)
                       (a :: Type) :: Type where
-  Component ('FreeOf w m) c        a = w ('WorldOf m) -> Maybe IntSet
+  Component ('FreeOf w m) c        a = (w ('WorldOf m) -> Maybe IntSet, Int)
 
   Component 'FieldOf      c        a = Maybe a
   Component 'SetterOf     c        a = Update a

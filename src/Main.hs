@@ -3,10 +3,12 @@
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE TypeFamilies          #-}
 
 module Main where
 
+import Control.Applicative
 import Control.Monad.Free
 import Data.Char (toUpper)
 import Data.Ecstasy
@@ -74,4 +76,11 @@ vsetSAY _ _ = pure ()
 zoom :: MonadFree (Zoom Entity m) mf => mf Int
 zoom = magic pos
 
+
+loadQuery :: Monad m => Free (Zoom world m) a -> QueryT world m a
+loadQuery = iterM (foldSum go . unZoom)
+  where
+    go Heckin{..} = do
+      f <- query heckinSelector
+      maybe empty id $ heckinCont f
 

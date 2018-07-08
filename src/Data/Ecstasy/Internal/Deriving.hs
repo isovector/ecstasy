@@ -8,6 +8,7 @@
 {-# LANGUAGE PolyKinds                 #-}
 {-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TupleSections             #-}
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE TypeOperators             #-}
@@ -15,21 +16,22 @@
 
 module Data.Ecstasy.Internal.Deriving where
 
-import Control.Arrow (first)
-import Control.Monad (join)
-import Control.Monad.Free
+import           Control.Arrow (first, second)
+import           Control.Monad (join)
 import           Control.Monad.Codensity
+import           Control.Monad.Free
 import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..), StorageType (..), ComponentType (..), Component)
 import           Data.Extensible.Sum
+import           Data.Extensible.Internal
 import           Data.IntMap (IntMap)
+import qualified Data.IntMap as I
 import           Data.IntSet (IntSet)
 import qualified Data.IntSet as IS
-import qualified Data.IntMap as I
 import           Data.Proxy (Proxy (..))
 import           GHC.Generics
 import           GHC.TypeLits
-import Unsafe.Coerce
+import           Unsafe.Coerce
 
 
 ------------------------------------------------------------------------------
@@ -242,47 +244,49 @@ instance (GDefault keep a, GDefault keep b)
 
 class GCommand w i o where
   type Commands w i o :: [*]
-  gCommand :: (w -> i x) -> o x
+  gCommand :: Int -> (w -> i x) -> (Int, o x)
 
 
 instance GCommand w (K1 _i (IntMap a))
-                    (K1 _i' (w -> Maybe IntSet)) where
+                    (K1 _i' (w -> Maybe IntSet, Int)) where
   type Commands w
                (K1 _i (IntMap a))
-               (K1 _i' (w -> Maybe IntSet)) = '[a]
-  gCommand f = K1 $ \w ->
+               (K1 _i' (w -> Maybe IntSet, Int)) = '[a]
+  gCommand x f = (x+1,) $ K1 $ (,x) $ \w ->
     let v = unK1 $ f w
      in Just $ I.keysSet v
   {-# INLINE gCommand #-}
 
 instance GCommand w (K1 _i (Maybe (Int, a)))
-                    (K1 _i' (w -> Maybe IntSet)) where
+                    (K1 _i' (w -> Maybe IntSet, Int)) where
   type Commands w
                (K1 _i (Maybe (Int, a)))
-               (K1 _i' (w -> Maybe IntSet)) = '[a]
-  gCommand f = K1 $ \w ->
+               (K1 _i' (w -> Maybe IntSet, Int)) = '[a]
+  gCommand x f = (x+1,) $ K1 $ (,x) $ \w ->
     let v = unK1 $ f w
      in Just $ maybe IS.empty (IS.singleton . fst) v
   {-# INLINE gCommand #-}
 
 instance GCommand w (K1 _i (VTable m a))
-                    (K1 _i' (w -> Maybe IntSet)) where
+                    (K1 _i' (w -> Maybe IntSet, Int)) where
   type Commands w
                (K1 _i (VTable m a))
-               (K1 _i' (w -> Maybe IntSet)) = '[a]
-  gCommand f = K1 $ \w -> Nothing
+               (K1 _i' (w -> Maybe IntSet, Int)) = '[a]
+  gCommand x f = (x+1, ) $ K1 $ (,x) $ \w -> Nothing
   {-# INLINE gCommand #-}
 
 instance GCommand w i o => GCommand w (M1 _i _c i) (M1 _i' _c' o) where
   type Commands w (M1 _i _c i) (M1 _i' _c' o) = Commands w i o
-  gCommand f = M1 . gCommand $ unM1 . f
+  gCommand x f = fmap M1 . gCommand x $ unM1 . f
   {-# INLINE gCommand #-}
 
 instance (GCommand w i o, GCommand w i' o')
     => GCommand w (i :*: i') (o :*: o') where
   type Commands w (i :*: i') (o :*: o') = Commands w i o :++ Commands w i' o'
-  gCommand f = gCommand ((\(a :*: _) -> a) . f)
-           :*: gCommand ((\(_ :*: b) -> b) . f)
+  gCommand x f =
+    let (x',  fc) = gCommand x  ((\(a :*: _) -> a) . f)
+        (x'', gc) = gCommand x' ((\(_ :*: b) -> b) . f)
+     in (x'', fc :*: gc)
   {-# INLINE gCommand #-}
 
 
@@ -296,7 +300,7 @@ command
        , worldOf ~ world ('WorldOf m)
        )
     => world ('FreeOf world m)
-command = to $ gCommand @worldOf from
+command = to . snd $ gCommand @worldOf 0 from
 {-# INLINE command #-}
 
 
@@ -311,11 +315,12 @@ magic
        , Generic (world ('FreeOf world m))
        , MonadFree (Zoom world m) mf
        )
-    => ( world 'FieldOf -> Component 'FieldOf c a )
+    => ( world ('FreeOf world m) -> Component ('FreeOf world m) c a )
     -> mf a
 magic f =
-  let sel = unsafeCoerce f $ command @world @m
-      in liftF . Zoom . EmbedAt undefined $ Heckin sel f Just
+  let (sel, v) = f $ command @world @m
+      in liftF . Zoom . EmbedAt (unsafeCoerce v) $ Heckin sel (unsafeCoerce f) Just
+
 
 
 -- getEnts :: Free (Zoom world m) a -> IntSet
@@ -323,6 +328,9 @@ magic f =
 --   where
 --     f (Zoom z = _
 
+
+foldSum :: (forall x. f x -> b) -> f :| xs -> b
+foldSum f (EmbedAt _ z) = f z
 
 type family xs :++ ys where
   '[] :++ ys = ys
