@@ -1,6 +1,7 @@
 flags: {}
 packages:
   - '.'
+  - '../accursed'
 
 extra-deps:
   - inspection-testing-0.3

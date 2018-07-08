@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 
 module Main where
@@ -12,6 +13,7 @@ import Control.Applicative
 import Control.Monad.Free
 import Data.Char (toUpper)
 import Data.Ecstasy
+import Data.Ecstasy.Internal
 import Data.Ecstasy.Internal.Deriving
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
@@ -38,18 +40,20 @@ main = do
 
     let
       step = do
-        pos' <- query pos
-        vel' <- query vel
+        pos' <- magic pos
+        vel' <- magic vel
         pure $ unchanged
           { pos = Set $ pos' + vel'
           }
-    emap allEnts step
-    emap allEnts step
+
+    esmart allEnts $ step
+    esmart allEnts $ step
+    esmart allEnts $ step
 
     efor allEnts $ do
       i <- queryEnt
-      with ack
-      pure $ show i
+      p <- query pos
+      pure $ show p
 
   print e
 --   print $ pos e
@@ -65,7 +69,7 @@ data Entity f = Entity
   , sAY :: Component f 'Virtual String
   } deriving (Generic)
 
-vgetSay _ = pure Nothing
+vgetSay i = putStrLn ("GET " ++ show i) *> pure Nothing
 vsetSay _ (Set msg) = putStrLn msg
 vsetSay _ _ = pure ()
 
@@ -75,12 +79,4 @@ vsetSAY _ _ = pure ()
 
 zoom :: MonadFree (Zoom Entity m) mf => mf Int
 zoom = magic pos
-
-
-loadQuery :: Monad m => Free (Zoom world m) a -> QueryT world m a
-loadQuery = iterM (foldSum go . unZoom)
-  where
-    go Heckin{..} = do
-      f <- query heckinSelector
-      maybe empty id $ heckinCont f
 

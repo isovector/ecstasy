@@ -319,7 +319,7 @@ magic
     -> mf a
 magic f =
   let (sel, v) = f $ command @world @m
-      in liftF . Zoom . EmbedAt (unsafeCoerce v) $ Heckin sel (unsafeCoerce f) Just
+      in liftF . Zoom . EmbedAt (unsafeCoerce v) $ Heckin sel (unsafeCoerce f) id
 
 
 
@@ -346,13 +346,13 @@ newtype Zoom w m a = Zoom
 
 instance Functor (Zoom w f) where
   fmap f (Zoom (EmbedAt m (Heckin r s k))) =
-    Zoom . EmbedAt m . Heckin r s $ fmap f . k
+    Zoom . EmbedAt m . Heckin r s $ f . k
   {-# INLINE fmap #-}
 
 data Heckin w m b a = Heckin
   { heckinRelevant :: w ('WorldOf m) -> Maybe IntSet
   , heckinSelector :: w 'FieldOf -> Maybe a
-  , heckinCont     :: a -> Maybe b
+  , heckinCont     :: a -> b
   }
 
 -- -- zoo2 :: Codensity (Free (Flip (->)

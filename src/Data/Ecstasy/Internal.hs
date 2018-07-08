@@ -7,6 +7,7 @@
 {-# LANGUAGE MonoLocalBinds         #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE RecordWildCards        #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TupleSections          #-}
 {-# LANGUAGE TypeApplications       #-}
@@ -15,9 +16,12 @@
 
 module Data.Ecstasy.Internal where
 
+import qualified Data.IntSet as IS
 import           Control.Arrow (first, second)
 import           Control.Monad (mzero, void)
 import           Control.Monad.Codensity (lowerCodensity)
+import           Control.Monad.Free
+import           Control.Monad.Prospect
 import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Control.Monad.Trans.Maybe (runMaybeT)
 import           Control.Monad.Trans.Reader (runReaderT, asks)
@@ -28,7 +32,7 @@ import qualified Data.Ecstasy.Types as T
 import           Data.Ecstasy.Types hiding (unEnt)
 import           Data.Foldable (for_)
 import           Data.Functor.Identity (Identity (..))
-import           Data.Maybe (catMaybes)
+import           Data.Maybe (catMaybes, mapMaybe)
 import           Data.Traversable (for)
 import           Data.Tuple (swap)
 import           GHC.Generics
@@ -318,6 +322,40 @@ emap t f = do
     cs <- getEntity e
     sets <- lift $ unQueryT f e cs
     for_ sets $ setEntity e
+
+------------------------------------------------------------------------------
+-- | Map a 'QueryT' transformation over all entites that match it.
+esmart
+    :: ( HasWorld world m
+       , Monad m
+       )
+    => EntTarget world m
+    -> Free (Zoom world m) (world 'SetterOf)
+    -> SystemT world m ()
+esmart t f = do
+  w <- SystemT $ gets snd
+  es <- IS.fromList . fmap T.unEnt <$> t
+  let (_, zs) = analyzeQuery f
+  let es' = foldr IS.intersection es (mapMaybe (($ w) . foldSum heckinRelevant . unZoom) zs)
+  for_ (IS.toList es') $ \e' -> do
+    let e = Ent e'
+    cs <- getEntity e
+    sets <- lift $ unQueryT (loadQuery f) e cs
+    for_ sets $ setEntity e
+
+
+loadQuery :: Monad m => Free (Zoom world m) a -> QueryT world m a
+loadQuery = iterM $ foldSum go . unZoom
+  where
+    go Heckin{..} = query heckinSelector >>= heckinCont
+
+
+analyzeQuery
+    :: Free (Zoom world m) (world 'SetterOf)
+    -> (Maybe (world 'SetterOf), [Zoom world m ()])
+analyzeQuery = survey alg
+  where
+    alg = foldSum (flip heckinCont guess) . unZoom
 
 
 ------------------------------------------------------------------------------
