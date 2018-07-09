@@ -5,6 +5,7 @@
 
 #if MIN_VERSION_base(4,9,1)
 {-# OPTIONS_GHC -O -fplugin Test.Inspection.Plugin #-}
+{-# OPTIONS_GHC -ddump-simpl -dsuppress-all #-}
 #endif
 
 
@@ -13,6 +14,7 @@ module InspectionSpec where
 import Control.Monad.Codensity
 import GHC.Generics
 import Data.Ecstasy
+import Data.Ecstasy.Internal.Deriving
 import Test.Hspec
 
 #if MIN_VERSION_base(4,9,1)
@@ -46,8 +48,10 @@ setter = unchanged
 world :: World ('WorldOf IO)
 world = defStorage
 
+worldCommand :: World ('FreeOf World IO)
+worldCommand = command
 
-#if MIN_VERSION_base(4,9,1)
+
 inspect $ hasNoGenerics 'getField
 inspect $ hasNoType 'getField ''Codensity
 
@@ -62,5 +66,6 @@ inspect $ hasNoType 'setter ''Codensity
 
 inspect $ hasNoGenerics 'world
 inspect $ hasNoType 'world ''Codensity
-#endif
+
+inspect $ hasNoGenerics 'worldCommand
 

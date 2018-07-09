@@ -53,3 +53,10 @@ Test-Suite tests
   if impl(ghc > 8.0.1)
     build-depends: inspection-testing >= 0.3 && <0.4
                  , template-haskell
+
+benchmark ecstasy-bench
+  type:             exitcode-stdio-1.0
+  default-language: Haskell2010
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base >= 4.7 && < 5, ecstasy, criterion

@@ -336,7 +336,9 @@ esmart t f = do
   w <- SystemT $ gets snd
   es <- IS.fromList . fmap T.unEnt <$> t
   let (_, zs) = analyzeQuery f
-  let es' = foldr IS.intersection es (mapMaybe (($ w) . foldSum heckinRelevant . unZoom) zs)
+      es' = foldr IS.intersection es
+          $ mapMaybe (($ w) . unHeck heckinRelevant) zs
+
   for_ (IS.toList es') $ \e' -> do
     let e = Ent e'
     cs <- getEntity e
@@ -344,10 +346,12 @@ esmart t f = do
     for_ sets $ setEntity e
 
 
+unHeck :: (forall x. Heckin w m a x -> b) -> Zoom w m a -> b
+unHeck f = foldSum f . unZoom
+
+
 loadQuery :: Monad m => Free (Zoom world m) a -> QueryT world m a
-loadQuery = iterM $ foldSum go . unZoom
-  where
-    go Heckin{..} = query heckinSelector >>= heckinCont
+loadQuery = iterM $ unHeck $ \z -> query (heckinSelector z) >>= heckinCont z
 
 
 analyzeQuery

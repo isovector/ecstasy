@@ -16,14 +16,11 @@
 
 module Data.Ecstasy.Internal.Deriving where
 
-import           Control.Arrow (first, second)
-import           Control.Monad (join)
 import           Control.Monad.Codensity
 import           Control.Monad.Free
 import           Control.Monad.Trans.Class (MonadTrans (..))
-import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..), StorageType (..), ComponentType (..), Component)
+import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..), StorageType (..), Component)
 import           Data.Extensible.Sum
-import           Data.Extensible.Internal
 import           Data.IntMap (IntMap)
 import qualified Data.IntMap as I
 import           Data.IntSet (IntSet)
@@ -41,7 +38,7 @@ class GHoistWorld (t :: (* -> *) -> * -> *) (m :: * -> *) a b where
 
 instance {-# OVERLAPPING #-} (MonadTrans t, Functor (t m), Monad m)
     => GHoistWorld t m (K1 i (VTable m a)) (K1 i' (VTable (t m) a)) where
-  gHoistWorld (K1 (VTable g s)) = K1 $ VTable (fmap lift g) (fmap (fmap lift) s)
+  gHoistWorld (K1 (VTable g s)) = K1 . VTable (fmap lift g) $ fmap (fmap lift) s
   {-# INLINE gHoistWorld #-}
 
 instance {-# OVERLAPPABLE #-} GHoistWorld t m (K1 i a) (K1 i' a) where
@@ -119,12 +116,12 @@ class GGetEntity m a b where
 
 instance (Monad m)
     => GGetEntity m (K1 i (VTable m a)) (K1 i' (Maybe a)) where
-  gGetEntity (K1 (VTable vget _)) e = lift $ fmap K1 $ vget $ Ent e
+  gGetEntity (K1 (VTable vg _)) e = lift . fmap K1 . vg $ Ent e
   {-# INLINE gGetEntity #-}
 
 instance Applicative m
     => GGetEntity m (K1 i (IntMap a)) (K1 i' (Maybe a)) where
-  gGetEntity (K1 a) e = pure . K1 $ I.lookup e $ a
+  gGetEntity (K1 a) e = pure . K1 $ I.lookup e a
   {-# INLINE gGetEntity #-}
 
 instance Applicative m
@@ -161,15 +158,15 @@ instance Applicative m
 
 instance (Monad m)
     => GSetEntity m (K1 i (Update a)) (K1 i' (VTable m a)) where
-  gSetEntity (K1 a) e (K1 z@(VTable _ vset)) =
-    lift (vset (Ent e) a) *> pure (K1 z)
+  gSetEntity (K1 a) e (K1 z@(VTable _ vs)) =
+    lift (vs (Ent e) a) *> pure (K1 z)
   {-# INLINE gSetEntity #-}
 
 instance Applicative m
     => GSetEntity m (K1 i (Update a)) (K1 i' (IntMap a)) where
-  gSetEntity (K1 Keep) _ (K1 b) = pure $ K1 b
+  gSetEntity (K1 Keep) _ (K1 b)    = pure $ K1 b
   gSetEntity (K1 (Set a)) e (K1 b) = pure . K1 $ I.alter (const $ Just a) e b
-  gSetEntity (K1 Unset) e (K1 b) = pure . K1 $ I.alter (const Nothing) e b
+  gSetEntity (K1 Unset) e (K1 b)   = pure . K1 $ I.alter (const Nothing) e b
   {-# INLINE gSetEntity #-}
 
 instance (Functor m, GSetEntity m f f')
@@ -252,7 +249,7 @@ instance GCommand w (K1 _i (IntMap a))
   type Commands w
                (K1 _i (IntMap a))
                (K1 _i' (w -> Maybe IntSet, Int)) = '[a]
-  gCommand x f = (x+1,) $ K1 $ (,x) $ \w ->
+  gCommand x f = (x+1,) . K1 . (,x) $ \w ->
     let v = unK1 $ f w
      in Just $ I.keysSet v
   {-# INLINE gCommand #-}
@@ -262,7 +259,7 @@ instance GCommand w (K1 _i (Maybe (Int, a)))
   type Commands w
                (K1 _i (Maybe (Int, a)))
                (K1 _i' (w -> Maybe IntSet, Int)) = '[a]
-  gCommand x f = (x+1,) $ K1 $ (,x) $ \w ->
+  gCommand x f = (x+1,) . K1 . (,x) $ \w ->
     let v = unK1 $ f w
      in Just $ maybe IS.empty (IS.singleton . fst) v
   {-# INLINE gCommand #-}
@@ -272,7 +269,7 @@ instance GCommand w (K1 _i (VTable m a))
   type Commands w
                (K1 _i (VTable m a))
                (K1 _i' (w -> Maybe IntSet, Int)) = '[a]
-  gCommand x f = (x+1, ) $ K1 $ (,x) $ \w -> Nothing
+  gCommand x _ = (x+1, ) . K1 . (,x) $ const Nothing
   {-# INLINE gCommand #-}
 
 instance GCommand w i o => GCommand w (M1 _i _c i) (M1 _i' _c' o) where
@@ -319,7 +316,9 @@ magic
     -> mf a
 magic f =
   let (sel, v) = f $ command @world @m
-      in liftF . Zoom . EmbedAt (unsafeCoerce v) $ Heckin sel (unsafeCoerce f) id
+      in liftF . Zoom
+               . EmbedAt (unsafeCoerce v)
+               $ Heckin sel (unsafeCoerce f) id
 
 
 
