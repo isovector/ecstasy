@@ -47,9 +47,9 @@ dumbMap = emap allEnts $ do
 
 sparseDumbMap :: Bench ()
 sparseDumbMap = emap allEnts $ do
+  _ <- query player
   p <- query pos
   v <- query vel
-  _ <- query player
   pure unchanged
     { pos = Set $ p + v
     }
@@ -64,9 +64,9 @@ smartMap = esmart allEnts $ do
 
 sparseSmartMap :: Bench ()
 sparseSmartMap = esmart allEnts $ do
+  _ <- magic player
   p <- magic pos
   v <- magic vel
-  _ <- magic player
   pure unchanged
     { pos = Set $ p + v
     }
@@ -79,18 +79,20 @@ runSize :: String -> Int -> Benchmark
 runSize name size =
   let initialized = initSize size in
   bgroup name
-    [ bench "init" $ whnfIO $ runWorld initialized
-    , bench "dumb" $ whnfIO $ runWorld $ initialized >> dumbMap
-    , bench "sparse_dumb" $ whnfIO $ runWorld $ initialized >> sparseDumbMap
-    , bench "smart" $ whnfIO $ runWorld $ initialized >> smartMap
+    [ bench "init"         $ whnfIO $ runWorld initialized
+    , bench "dumb"         $ whnfIO $ runWorld $ initialized >> dumbMap
+    , bench "smart"        $ whnfIO $ runWorld $ initialized >> smartMap
+    , bench "sparse_dumb"  $ whnfIO $ runWorld $ initialized >> sparseDumbMap
     , bench "sparse_smart" $ whnfIO $ runWorld $ initialized >> sparseSmartMap
     ]
 
 
 main :: IO ()
 main = C.defaultMainWith C.defaultConfig
-  [ runSize "tiny"  10
-  , runSize "small" 100
-  , runSize "big"   1000
-  , runSize "huge"  10000
+  [ -- runSize "micro"   1
+  -- , runSize "tiny"    10
+  -- , runSize "small"   100
+    runSize "big"     1000
+  -- , runSize "huge"    10000
+  -- , runSize "massive" 100000
   ]

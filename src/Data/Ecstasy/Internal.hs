@@ -19,7 +19,7 @@ module Data.Ecstasy.Internal where
 import qualified Data.IntSet as IS
 import           Control.Arrow (first, second)
 import           Control.Monad (mzero, void)
-import           Control.Monad.Codensity (lowerCodensity)
+import           Control.Monad.Codensity (lowerCodensity, improve)
 import           Control.Monad.Free
 import           Control.Monad.Prospect
 import           Control.Monad.Trans.Class (MonadTrans (..))
@@ -330,12 +330,12 @@ esmart
        , Monad m
        )
     => EntTarget world m
-    -> Free (Zoom world m) (world 'SetterOf)
+    -> (forall mf. MonadFree (Zoom world m) mf => mf (world 'SetterOf))
     -> SystemT world m ()
 esmart t f = do
   w <- SystemT $ gets snd
   es <- IS.fromList . fmap T.unEnt <$> t
-  let (_, zs) = analyzeQuery f
+  let (_, zs) = analyzeQuery $ improve f
       es' = foldr IS.intersection es
           $ mapMaybe (($ w) . unHeck heckinRelevant) zs
 
