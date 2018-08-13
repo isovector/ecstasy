@@ -3,17 +3,19 @@
 
 module Main where
 
-import Control.Monad (void, replicateM_)
+import           Control.Monad (void, replicateM_)
 import           Criterion
 import qualified Criterion.Main as C
 import           Criterion.Types
 import           Data.Ecstasy
 import           Data.Ecstasy.Internal
 import           Data.Ecstasy.Internal.Deriving
+import           Linear
+
 
 data Entity f = Entity
-  { pos    :: Component f 'Field  Int
-  , vel    :: Component f 'Field  Int
+  { pos    :: Component f 'Field  (V2 Float)
+  , vel    :: Component f 'Field  (V2 Float)
   , player :: Component f 'Unique ()
   } deriving (Generic)
 
@@ -79,11 +81,11 @@ runSize :: String -> Int -> Benchmark
 runSize name size =
   let initialized = initSize size in
   bgroup name
-    [ bench "init"         $ whnfIO $ runWorld initialized
-    , bench "dumb"         $ whnfIO $ runWorld $ initialized >> dumbMap
-    , bench "smart"        $ whnfIO $ runWorld $ initialized >> smartMap
-    , bench "sparse_dumb"  $ whnfIO $ runWorld $ initialized >> sparseDumbMap
-    , bench "sparse_smart" $ whnfIO $ runWorld $ initialized >> sparseSmartMap
+    [  -- bench "init"         $ whnfIO $ runWorld initialized
+    -- , bench "dumb"         $ whnfIO $ runWorld $ initialized >> dumbMap
+      bench "smart"        $ whnfIO $ runWorld $ initialized >> smartMap
+    -- , bench "sparse_dumb"  $ whnfIO $ runWorld $ initialized >> sparseDumbMap
+    -- , bench "sparse_smart" $ whnfIO $ runWorld $ initialized >> sparseSmartMap
     ]
 
 

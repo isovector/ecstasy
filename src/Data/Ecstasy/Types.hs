@@ -7,6 +7,7 @@
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeInType                 #-}
 {-# LANGUAGE UndecidableInstances       #-}
@@ -14,6 +15,7 @@
 
 module Data.Ecstasy.Types where
 
+import Data.Coerce
 import Data.IntSet (IntSet)
 import Control.Applicative (Alternative)
 import Control.Monad (MonadPlus)
@@ -56,12 +58,18 @@ newtype SystemT w m a = SystemT
            , MonadIO
            )
 
+-- instance Functor m => Functor (SystemT w m) where
+--   fmap = coerce (fmap @(StateT (SystemState w m) m))
+
 instance MonadTrans (SystemT w) where
   lift = SystemT . lift
+  {-# INLINE lift #-}
 
 instance MonadState s m => MonadState s (SystemT w m) where
   get = SystemT . lift $ get
+  {-# INLINE get #-}
   put = SystemT . lift . put
+  {-# INLINE put #-}
 
 
 ------------------------------------------------------------------------------
@@ -86,10 +94,13 @@ newtype QueryT w m a = QueryT
 
 instance MonadTrans (QueryT w) where
   lift = QueryT . lift . lift
+  {-# INLINE lift #-}
 
 instance MonadReader r m => MonadReader r (QueryT w m) where
   ask = QueryT $ lift ask
+  {-# INLINE ask #-}
   local f = QueryT . runQueryT' . local f
+  {-# INLINE local #-}
 
 
 ------------------------------------------------------------------------------

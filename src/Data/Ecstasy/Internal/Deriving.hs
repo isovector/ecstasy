@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE InstanceSigs              #-}
 {-# LANGUAGE KindSignatures            #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
@@ -19,6 +20,7 @@ module Data.Ecstasy.Internal.Deriving where
 import           Control.Monad.Codensity
 import           Control.Monad.Free
 import           Control.Monad.Trans.Class (MonadTrans (..))
+import           Data.Coerce
 import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..), StorageType (..), Component)
 import           Data.Extensible.Sum
 import           Data.IntMap (IntMap)
@@ -157,7 +159,7 @@ instance Applicative m
   {-# INLINE gSetEntity #-}
 
 instance (Monad m)
-    => GSetEntity m (K1 i (Update a)) (K1 i' (VTable m a)) where
+    => GSetEntity m (K1 i' (Update a)) (K1 i' (VTable m a)) where
   gSetEntity (K1 a) e (K1 z@(VTable _ vs)) =
     lift (vs (Ent e) a) *> pure (K1 z)
   {-# INLINE gSetEntity #-}
@@ -171,7 +173,7 @@ instance Applicative m
 
 instance (Functor m, GSetEntity m f f')
     => GSetEntity m (M1 i c f) (M1 i' c' f') where
-  gSetEntity (M1 a) e (M1 b) = fmap M1 $ gSetEntity a e b
+  gSetEntity (M1 a) e (M1 b) = coerce $ gSetEntity @m a e b
   {-# INLINE gSetEntity #-}
 
 instance (Applicative m, GSetEntity m a c, GSetEntity m b d)

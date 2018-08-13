@@ -305,6 +305,7 @@ unQueryT
   -> world 'FieldOf
   -> m (Maybe a)
 unQueryT q e f = runMaybeT $ flip runReaderT (e, f) $ runQueryT' q
+{-# INLINE unQueryT #-}
 
 
 ------------------------------------------------------------------------------
