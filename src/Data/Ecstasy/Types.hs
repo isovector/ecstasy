@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveTraversable          #-}
@@ -24,6 +25,7 @@ import Control.Monad.Trans.Maybe (MaybeT (..))
 import Control.Monad.Trans.Reader (ReaderT (..))
 import Control.Monad.Trans.State.Strict (StateT (..))
 import Control.Monad.Writer.Class (MonadWriter)
+import Data.Data
 import Data.Functor.Identity (Identity)
 import Data.IntMap.Strict (IntMap)
 import Data.Kind
@@ -32,7 +34,7 @@ import Data.Kind
 ------------------------------------------------------------------------------
 -- | The key for an entity.
 newtype Ent = Ent { unEnt :: Int }
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Data, Typeable)
 
 instance Show Ent where
   show (Ent e) = "Ent " ++ show e
