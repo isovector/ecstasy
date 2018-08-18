@@ -68,6 +68,9 @@ data Hooks w m = Hooks
   , hookDelEnt :: Ent -> SystemT w m ()
   } deriving (Generic)
 
+defHooks :: Monad m => Hooks w m
+defHooks = Hooks (const $ pure ()) (const $ pure ())
+
 
 ------------------------------------------------------------------------------
 -- | A monad transformer over an ECS given a world 'w'.

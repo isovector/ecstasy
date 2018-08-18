@@ -296,8 +296,8 @@ deleteEntity
     -> SystemT world m ()
 deleteEntity e = do
   h <- SystemT $ S.gets _ssHooks
+  hookDelEnt h e
   setEntity e delEntity
-  hookNewEnt h e
 
 
 ------------------------------------------------------------------------------
@@ -396,10 +396,6 @@ runSystemT
     -> SystemT world m a
     -> m a
 runSystemT w = flip evalStateT (SystemState 0 w defHooks) . runSystemT'
-
-
-defHooks :: Monad m => Hooks w m
-defHooks = Hooks (const $ pure ()) (const $ pure ())
 
 
 ------------------------------------------------------------------------------

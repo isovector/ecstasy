@@ -14,7 +14,7 @@ module Data.Ecstasy.Internal.Deriving where
 
 import           Control.Monad.Codensity
 import           Control.Monad.Trans.Class (MonadTrans (..))
-import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..))
+import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..), Hooks, defHooks)
 import           Data.IntMap (IntMap)
 import qualified Data.IntMap as I
 import           Data.Proxy (Proxy (..))
@@ -202,6 +202,10 @@ instance GDefault 'True (K1 i (Update c)) where
 
 instance GDefault keep (K1 i (IntMap c)) where
   gdef = K1 I.empty
+  {-# INLINE gdef #-}
+
+instance Monad m => GDefault keep (K1 i (Hooks w m)) where
+  gdef = K1 defHooks
   {-# INLINE gdef #-}
 
 instance {-# OVERLAPPING #-} (Applicative m, KnownSymbol sym)
