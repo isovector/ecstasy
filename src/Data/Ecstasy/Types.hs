@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -29,6 +30,8 @@ import Data.Data
 import Data.Functor.Identity (Identity)
 import Data.IntMap.Strict (IntMap)
 import Data.Kind
+import GHC.Generics (Generic)
+import Lens.Micro
 
 
 ------------------------------------------------------------------------------
@@ -42,7 +45,29 @@ instance Show Ent where
 
 ------------------------------------------------------------------------------
 -- | The internal state of the 'SystemT' monad.
-type SystemState w m = (Int, w ('WorldOf m))
+data SystemState w m = SystemState
+  { _ssNextId :: Int
+  , _ssWorld  :: w ('WorldOf m)
+  , _ssHooks  :: Hooks w m
+  } deriving (Generic)
+
+ssNextId :: Lens' (SystemState w m) Int
+ssNextId f (SystemState a b c) = (\a' -> SystemState a' b c) <$> f a
+
+ssWorld :: Lens' (SystemState w m) (w ('WorldOf m))
+ssWorld f (SystemState a b c) = (\b' -> SystemState a b' c) <$> f b
+
+ssHooks :: Lens' (SystemState w m) (Hooks w m)
+ssHooks f (SystemState a b c) = (\c' -> SystemState a b c') <$> f c
+
+
+------------------------------------------------------------------------------
+-- | A datastructure holding hooks into ecstasy's entity management.
+data Hooks w m = Hooks
+  { hookNewEnt :: Ent -> SystemT w m ()
+  , hookDelEnt :: Ent -> SystemT w m ()
+  } deriving (Generic)
+
 
 ------------------------------------------------------------------------------
 -- | A monad transformer over an ECS given a world 'w'.
@@ -61,7 +86,7 @@ instance MonadTrans (SystemT w) where
   lift = SystemT . lift
 
 instance MonadState s m => MonadState s (SystemT w m) where
-  get = SystemT . lift $ get
+  get = SystemT $ lift get
   put = SystemT . lift . put
 
 

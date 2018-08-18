@@ -15,13 +15,12 @@
 
 module Data.Ecstasy.Internal where
 
-import           Control.Arrow (first, second)
 import           Control.Monad (mzero, void)
 import           Control.Monad.Codensity (lowerCodensity)
 import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Control.Monad.Trans.Maybe (runMaybeT)
 import           Control.Monad.Trans.Reader (runReaderT, asks)
-import           Control.Monad.Trans.State.Strict (StateT (..), modify, get, gets, evalStateT)
+import           Control.Monad.Trans.State.Strict (StateT (..), modify, gets, evalStateT)
 import qualified Control.Monad.Trans.State.Strict as S
 import           Data.Ecstasy.Internal.Deriving
 import qualified Data.Ecstasy.Types as T
@@ -32,6 +31,7 @@ import           Data.Maybe (catMaybes)
 import           Data.Traversable (for)
 import           Data.Tuple (swap)
 import           GHC.Generics
+import           Lens.Micro ((.~))
 
 
 ------------------------------------------------------------------------------
@@ -56,7 +56,7 @@ class HasWorld' world => HasWorld world m where
       => Ent
       -> SystemT world m (world 'FieldOf)
   getEntity e = do
-    w <- SystemT $ gets snd
+    w <- SystemT $ gets _ssWorld
     lift . lowerCodensity
          . fmap to
          . gGetEntity @m (from w)
@@ -81,12 +81,12 @@ class HasWorld' world => HasWorld world m where
       -> world 'SetterOf
       -> SystemT world m ()
   setEntity e s = do
-    w <- SystemT $ gets snd
+    w <- SystemT $ gets _ssWorld
     x <- lift . lowerCodensity
               . fmap to
               . gSetEntity (from s) (T.unEnt e)
               $ from w
-    SystemT . modify . second $ const x
+    SystemT . modify $ ssWorld .~ x
   {-# INLINE setEntity #-}
 
   ----------------------------------------------------------------------------
@@ -197,7 +197,6 @@ class StorageSurgeon t m world where
        , GHoistWorld t m
                      (Rep (world ('WorldOf m)))
                      (Rep (world ('WorldOf (t m))))
-       , MonadTrans t
        )
     => world ('WorldOf m)
     -> world ('WorldOf (t m))
@@ -248,6 +247,8 @@ instance ( Generic (world ('WorldOf m))
 --   for_ thingsToRender $ \\thingy ->
 --     tell [thingy]
 -- @
+--
+-- Note: Any hooks installed will *not* be run under surgery.
 surgery
     :: ( Monad (t m)
        , Monad m
@@ -256,9 +257,10 @@ surgery
     => (forall x. t m x -> m (x, b))
     -> SystemT world (t m) a
     -> SystemT world m (b, a)
-surgery f m = SystemT $ StateT $ \(i, s) -> do
-  (((i', s'), a), b) <- f $ yieldSystemT (i, hoistStorage s) m
-  pure ((b, a), (i', graftStorage s s'))
+surgery f m = SystemT $ StateT $ \(SystemState i s h) -> do
+  ((SystemState i' s' _, a), b) <-
+    f $ yieldSystemT (SystemState i (hoistStorage s) defHooks) m
+  pure ((b, a), (SystemState i' (graftStorage s s') h))
 
 
 ------------------------------------------------------------------------------
@@ -267,8 +269,8 @@ nextEntity
     :: Monad m
     => SystemT a m Ent
 nextEntity = do
-  (e, _) <- SystemT S.get
-  SystemT . modify . first . const $ e + 1
+  e <- SystemT $ S.gets _ssNextId
+  SystemT . modify $ ssNextId .~ e + 1
   pure $ Ent e
 
 
@@ -279,18 +281,23 @@ createEntity
     => world 'FieldOf
     -> SystemT world m Ent
 createEntity cs = do
+  h <- SystemT $ S.gets _ssHooks
   e <- nextEntity
   setEntity e $ convertSetter cs
+  hookNewEnt h e
   pure e
 
 
 ------------------------------------------------------------------------------
 -- | Delete an entity.
 deleteEntity
-    :: (HasWorld world m, Monad m)
+   :: (HasWorld world m, Monad m)
     => Ent
     -> SystemT world m ()
-deleteEntity = flip setEntity delEntity
+deleteEntity e = do
+  h <- SystemT $ S.gets _ssHooks
+  setEntity e delEntity
+  hookNewEnt h e
 
 
 ------------------------------------------------------------------------------
@@ -388,7 +395,11 @@ runSystemT
     => world ('WorldOf m)
     -> SystemT world m a
     -> m a
-runSystemT w = flip evalStateT (0, w) . runSystemT'
+runSystemT w = flip evalStateT (SystemState 0 w defHooks) . runSystemT'
+
+
+defHooks :: Monad m => Hooks w m
+defHooks = Hooks (const $ pure ()) (const $ pure ())
 
 
 ------------------------------------------------------------------------------
@@ -479,7 +490,7 @@ type EntTarget world m = SystemT world m [Ent]
 -- | Iterate over all entities.
 allEnts :: Monad m => EntTarget world m
 allEnts = do
-  (es, _) <- SystemT get
+  es <- SystemT $ gets _ssNextId
   pure $ Ent <$> [0 .. es - 1]
 
 
