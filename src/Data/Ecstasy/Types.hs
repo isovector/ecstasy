@@ -10,6 +10,7 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeFamilyDependencies     #-}
 {-# LANGUAGE TypeInType                 #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# OPTIONS_GHC -funbox-strict-fields   #-}
@@ -101,7 +102,7 @@ type System w = SystemT w Identity
 ------------------------------------------------------------------------------
 -- | A computation to run over a particular entity.
 newtype QueryT w m a = QueryT
-  { runQueryT' :: ReaderT (Ent, w 'FieldOf) (MaybeT m) a
+  { runQueryT' :: ReaderT (Ent, w ('WorldOf m)) (MaybeT m) a
   }
   deriving ( Functor
            , Applicative
@@ -169,4 +170,10 @@ type family Component (s :: StorageType)
   Component ('WorldOf m) 'Field   a = IntMap a
   Component ('WorldOf m) 'Unique  a = Maybe (Int, a)
   Component ('WorldOf m) 'Virtual a = VTable m a
+
+type family FuckYou (m :: Type -> Type)
+                    (r :: Type) = (c :: ComponentType) where
+  FuckYou m (IntMap a) = 'Field
+  FuckYou m (Maybe (Int, a)) = 'Unique
+  FuckYou m (VTable m a) = 'Virtual
 

@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE MonoLocalBinds         #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE RankNTypes             #-}
@@ -15,11 +16,12 @@
 
 module Data.Ecstasy.Internal where
 
+import           Control.Applicative (empty)
 import           Control.Monad (mzero, void)
 import           Control.Monad.Codensity (lowerCodensity)
 import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Control.Monad.Trans.Maybe (runMaybeT)
-import           Control.Monad.Trans.Reader (runReaderT, asks)
+import           Control.Monad.Trans.Reader (runReaderT, ask, asks)
 import           Control.Monad.Trans.State.Strict (StateT (..), modify, gets, evalStateT)
 import qualified Control.Monad.Trans.State.Strict as S
 import           Data.Ecstasy.Internal.Deriving
@@ -305,7 +307,7 @@ deleteEntity e = do
 unQueryT
   :: QueryT world m a
   -> Ent
-  -> world 'FieldOf
+  -> world ('WorldOf m)
   -> m (Maybe a)
 unQueryT q e f = runMaybeT $ flip runReaderT (e, f) $ runQueryT' q
 
@@ -322,7 +324,7 @@ emap
 emap t f = do
   es <- t
   for_ es $ \e -> do
-    cs <- getEntity e
+    cs <- getWorld
     sets <- lift $ unQueryT f e cs
     for_ sets $ setEntity e
 
@@ -340,7 +342,7 @@ efor
 efor t f = do
   es <- t
   fmap catMaybes $ for es $ \e -> do
-    cs <- getEntity e
+    cs <- getWorld
     lift $ unQueryT f e cs
 
 
@@ -356,7 +358,7 @@ eover
 eover t f = do
   es <- t
   fmap catMaybes $ for es $ \e -> do
-    cs <- getEntity e
+    cs <- getWorld
     mset <- lift $ unQueryT f e cs
     for mset $ \(a, setter) -> do
       setEntity e setter
@@ -373,8 +375,12 @@ runQueryT
     -> QueryT world m a
     -> SystemT world m (Maybe a)
 runQueryT e qt = do
-  cs <- getEntity e
+  cs <- getWorld
   lift $ unQueryT qt e cs
+
+
+getWorld :: Monad m => SystemT world m (world ('WorldOf m))
+getWorld = SystemT $ gets _ssWorld
 
 
 ------------------------------------------------------------------------------
@@ -410,10 +416,14 @@ runSystem = (runIdentity .) . runSystemT
 ------------------------------------------------------------------------------
 -- | Only evaluate this 'QueryT' for entities which have the given component.
 with
-    :: Monad m
-    => (world 'FieldOf -> Maybe a)
+    :: forall m c a world. ( Monad m
+       , Generic (Component ('WorldOf m) c a)
+       , GGetEntity m (Rep (Component ('WorldOf m) c a)) (Rep (Maybe a))
+       , c ~ FuckYou m (Component ('WorldOf m) c a)
+       )
+    => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m ()
-with = void . query
+with = void . query @_ @c @a
 {-# INLINE with #-}
 
 
@@ -421,33 +431,54 @@ with = void . query
 -- | Only evaluate this 'QueryT' for entities which do not have the given
 -- component.
 without
-    :: Monad m
-    => (world 'FieldOf -> Maybe a)
+    :: forall m c a world. ( Monad m
+       , Generic (Component ('WorldOf m) c a)
+       , GGetEntity m (Rep (Component ('WorldOf m) c a)) (Rep (Maybe a))
+       , c ~ FuckYou m (Component ('WorldOf m) c a)
+       )
+    => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m ()
 without f = do
-  e <- QueryT $ asks snd
-  maybe (pure ()) (const mzero) $ f e
+  (Ent e, w) <- QueryT ask
+  z <- lift . lowerCodensity
+            . fmap to
+            $ gGetEntity @_ @_ @(Rep (Maybe a)) (from $ f w) e
+  maybe (pure ()) (const empty) z
 
 
 ------------------------------------------------------------------------------
 -- | Get the value of a component, failing the 'QueryT' if it isn't present.
 query
-    :: Monad m
-    => (world 'FieldOf -> Maybe a)
+    :: ( Monad m
+       , Generic (Component ('WorldOf m) c a)
+       , GGetEntity m (Rep (Component ('WorldOf m) c a)) (Rep (Maybe a))
+       , c ~ FuckYou m (Component ('WorldOf m) c a)
+       )
+    => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m a
 query f = do
-  e <- QueryT $ asks snd
-  maybe mzero pure $ f e
-{-# INLINE query #-}
+  (Ent e, w) <- QueryT ask
+  z <- lift . lowerCodensity
+            . fmap to
+            $ gGetEntity (from $ f w) e
+  maybe empty pure z
 
 
 ------------------------------------------------------------------------------
 -- | Attempt to get the value of a component.
 queryMaybe
-    :: Monad m
-    => (world 'FieldOf -> Maybe a)
+    :: ( Monad m
+       , Generic (Component ('WorldOf m) c a)
+       , GGetEntity m (Rep (Component ('WorldOf m) c a)) (Rep (Maybe a))
+       , c ~ FuckYou m (Component ('WorldOf m) c a)
+       )
+    => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m (Maybe a)
-queryMaybe f = fmap f $ QueryT $ asks snd
+queryMaybe f = do
+  (Ent e, w) <- QueryT ask
+  lift . lowerCodensity
+       . fmap to
+       $ gGetEntity (from $ f w) e
 
 
 ------------------------------------------------------------------------------
@@ -461,20 +492,28 @@ queryEnt = QueryT $ asks fst
 ------------------------------------------------------------------------------
 -- | Query a flag as a 'Bool'.
 queryFlag
-    :: Monad m
-    => (world 'FieldOf -> Maybe ())
+    :: forall m c a world. ( Monad m
+       , Generic (Component ('WorldOf m) c a)
+       , GGetEntity m (Rep (Component ('WorldOf m) c a)) (Rep (Maybe a))
+       , c ~ FuckYou m (Component ('WorldOf m) c a)
+       )
+    => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m Bool
-queryFlag = fmap (maybe False (const True)) . queryMaybe
+queryFlag = fmap (maybe False (const True)) . queryMaybe @_ @c @a
 
 
 ------------------------------------------------------------------------------
 -- | Perform a query with a default.
 queryDef
-    :: Monad m
-    => z
-    -> (world 'FieldOf -> Maybe z)
-    -> QueryT world m z
-queryDef z = fmap (maybe z id) . queryMaybe
+    :: forall m c a world. ( Monad m
+       , Generic (Component ('WorldOf m) c a)
+       , GGetEntity m (Rep (Component ('WorldOf m) c a)) (Rep (Maybe a))
+       , c ~ FuckYou m (Component ('WorldOf m) c a)
+       )
+    => a
+    -> (world ('WorldOf m) -> Component ('WorldOf m) c a)
+    -> QueryT world m a
+queryDef z = fmap (maybe z id) . queryMaybe @_ @c
 
 
 ------------------------------------------------------------------------------
