@@ -140,6 +140,7 @@ class GSetEntity m a b where
 instance Applicative m
     => GSetEntity m (K1 i (Update a)) (K1 i' (Maybe (Int, a))) where
   gSetEntity (K1 (Set a)) e _ = pure . K1 $ Just (e, a)
+  gSetEntity (K1 (Modify _)) _ _ = error "shit what happens here"
   gSetEntity (K1 Unset) e (K1 (Just (e', b))) =
     pure $ if e == e'
        then K1 Nothing
@@ -158,6 +159,7 @@ instance Applicative m
   gSetEntity (K1 Keep) _ (K1 b) = pure $ K1 b
   gSetEntity (K1 (Set a)) e (K1 b) = pure . K1 $ I.alter (const $ Just a) e b
   gSetEntity (K1 Unset) e (K1 b) = pure . K1 $ I.alter (const Nothing) e b
+  gSetEntity (K1 (Modify f)) e (K1 b) = pure . K1 $ I.alter (fmap f) e b
   {-# INLINE gSetEntity #-}
 
 instance (Functor m, GSetEntity m f f')

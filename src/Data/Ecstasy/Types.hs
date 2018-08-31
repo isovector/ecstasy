@@ -155,7 +155,7 @@ data Update a
   = Keep   -- ^ Keep the current value.
   | Unset  -- ^ Delete the current value if it exists.
   | Set !a  -- ^ Set the current value.
-  deriving (Eq, Ord, Show, Read, Functor, Foldable, Traversable)
+  | Modify !(a -> a)
 
 
 ------------------------------------------------------------------------------
