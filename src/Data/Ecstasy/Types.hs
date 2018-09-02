@@ -25,10 +25,8 @@ import Control.Monad.State.Class (MonadState (..))
 import Control.Monad.Trans.Class (MonadTrans (..))
 import Control.Monad.Trans.Maybe (MaybeT (..))
 import Control.Monad.Trans.Reader (ReaderT (..))
-import Control.Monad.Trans.State.Strict (StateT (..))
 import Control.Monad.Writer.Class (MonadWriter)
 import Data.Data
-import Data.Functor.Identity (Identity)
 import Data.IORef (IORef)
 import Data.IntMap.Strict (IntMap)
 import Data.Kind

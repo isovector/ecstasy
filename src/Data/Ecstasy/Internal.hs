@@ -17,23 +17,19 @@
 module Data.Ecstasy.Internal where
 
 import           Control.Applicative (empty)
-import           Control.Monad (mzero, void)
+import           Control.Monad (void)
 import           Control.Monad.Codensity (lowerCodensity)
 import           Control.Monad.IO.Class (MonadIO (..))
 import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Control.Monad.Trans.Maybe (runMaybeT)
 import           Control.Monad.Trans.Reader (ReaderT (..), ask, asks)
-import           Control.Monad.Trans.State.Strict (StateT (..), modify, gets, evalStateT)
-import qualified Control.Monad.Trans.State.Strict as S
 import           Data.Ecstasy.Internal.Deriving
 import qualified Data.Ecstasy.Types as T
 import           Data.Ecstasy.Types hiding (unEnt)
 import           Data.Foldable (for_)
-import           Data.Functor.Identity (Identity (..))
 import           Data.IORef
 import           Data.Maybe (catMaybes)
 import           Data.Traversable (for)
-import           Data.Tuple (swap)
 import           GHC.Generics
 import           Lens.Micro ((.~))
 
