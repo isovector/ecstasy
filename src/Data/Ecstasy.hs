@@ -45,8 +45,6 @@ module Data.Ecstasy
   , SystemT ()
   , runSystemT
   , yieldSystemT
-  , System
-  , runSystem
   , SystemState
 
   -- * Working with SystemT

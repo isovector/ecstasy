@@ -29,6 +29,7 @@ import Control.Monad.Trans.State.Strict (StateT (..))
 import Control.Monad.Writer.Class (MonadWriter)
 import Data.Data
 import Data.Functor.Identity (Identity)
+import Data.IORef (IORef)
 import Data.IntMap.Strict (IntMap)
 import Data.Kind
 import GHC.Generics (Generic)
@@ -47,9 +48,9 @@ instance Show Ent where
 ------------------------------------------------------------------------------
 -- | The internal state of the 'SystemT' monad.
 data SystemState w m = SystemState
-  { _ssNextId :: Int
+  { _ssNextId :: {-# UNPACK #-} !Int
   , _ssWorld  :: w ('WorldOf m)
-  , _ssHooks  :: Hooks w m
+  , _ssHooks  :: {-# UNPACK #-} !(Hooks w m)
   } deriving (Generic)
 
 ssNextId :: Lens' (SystemState w m) Int
@@ -76,12 +77,12 @@ defHooks = Hooks (const $ pure ()) (const $ pure ())
 ------------------------------------------------------------------------------
 -- | A monad transformer over an ECS given a world 'w'.
 newtype SystemT w m a = SystemT
-  { runSystemT' :: StateT (SystemState w m) m a
+  { runSystemT' :: ReaderT (IORef (SystemState w m)) m a
   }
   deriving ( Functor
            , Applicative
            , Monad
-           , MonadReader r
+           , MonadState s
            , MonadWriter ww
            , MonadIO
            )
@@ -89,14 +90,10 @@ newtype SystemT w m a = SystemT
 instance MonadTrans (SystemT w) where
   lift = SystemT . lift
 
-instance MonadState s m => MonadState s (SystemT w m) where
-  get = SystemT $ lift get
-  put = SystemT . lift . put
-
-
-------------------------------------------------------------------------------
--- | A monad over an ECS given a world 'w'.
-type System w = SystemT w Identity
+instance MonadReader r m => MonadReader r (SystemT w m) where
+  ask = SystemT $ lift ask
+  local z s = SystemT . ReaderT $ \r ->
+    local z $ runReaderT (runSystemT' s) r
 
 
 ------------------------------------------------------------------------------

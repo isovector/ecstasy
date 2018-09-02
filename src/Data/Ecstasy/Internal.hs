@@ -19,9 +19,10 @@ module Data.Ecstasy.Internal where
 import           Control.Applicative (empty)
 import           Control.Monad (mzero, void)
 import           Control.Monad.Codensity (lowerCodensity)
+import           Control.Monad.IO.Class (MonadIO (..))
 import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Control.Monad.Trans.Maybe (runMaybeT)
-import           Control.Monad.Trans.Reader (runReaderT, ask, asks)
+import           Control.Monad.Trans.Reader (ReaderT (..), ask, asks)
 import           Control.Monad.Trans.State.Strict (StateT (..), modify, gets, evalStateT)
 import qualified Control.Monad.Trans.State.Strict as S
 import           Data.Ecstasy.Internal.Deriving
@@ -29,6 +30,7 @@ import qualified Data.Ecstasy.Types as T
 import           Data.Ecstasy.Types hiding (unEnt)
 import           Data.Foldable (for_)
 import           Data.Functor.Identity (Identity (..))
+import           Data.IORef
 import           Data.Maybe (catMaybes)
 import           Data.Traversable (for)
 import           Data.Tuple (swap)
@@ -39,7 +41,7 @@ import           Lens.Micro ((.~))
 ------------------------------------------------------------------------------
 -- | This class provides all of the functionality necessary to manipulate the
 -- ECS.
-class HasWorld' world => HasWorld world m where
+class (Monad m, MonadIO m, HasWorld' world) => HasWorld world m where
 
   ----------------------------------------------------------------------------
   -- | Fetches an entity from the world given its 'Ent'.
@@ -58,7 +60,7 @@ class HasWorld' world => HasWorld world m where
       => Ent
       -> SystemT world m (world 'FieldOf)
   getEntity e = do
-    w <- SystemT $ gets _ssWorld
+    w <- getWorld
     lift . lowerCodensity
          . fmap to
          . gGetEntity @m (from w)
@@ -83,12 +85,12 @@ class HasWorld' world => HasWorld world m where
       -> world 'SetterOf
       -> SystemT world m ()
   setEntity e s = do
-    w <- SystemT $ gets _ssWorld
+    w <- getWorld
     x <- lift . lowerCodensity
               . fmap to
               . gSetEntity (from s) (T.unEnt e)
               $ from w
-    SystemT . modify $ ssWorld .~ x
+    modifyingIO $ ssWorld .~ x
   {-# INLINE setEntity #-}
 
   ----------------------------------------------------------------------------
@@ -182,6 +184,7 @@ instance ( HasWorld' world
                       (Rep (world ('WorldOf m)))
                       (Rep (world 'FieldOf))
          , Monad m
+         , MonadIO m
          ) => HasWorld world m
 
 
@@ -253,26 +256,30 @@ instance ( Generic (world ('WorldOf m))
 -- Note: Any hooks installed will *not* be run under surgery.
 surgery
     :: ( Monad (t m)
+       , MonadIO (t m)
        , Monad m
+       , MonadIO m
        , StorageSurgeon t m world
        )
     => (forall x. t m x -> m (x, b))
     -> SystemT world (t m) a
     -> SystemT world m (b, a)
-surgery f m = SystemT $ StateT $ \(SystemState i s h) -> do
+surgery f m = SystemT $ ReaderT $ \ref -> do
+  SystemState i s h <- liftIO $ readIORef ref
   ((SystemState i' s' _, a), b) <-
     f $ yieldSystemT (SystemState i (hoistStorage s) defHooks) m
-  pure ((b, a), (SystemState i' (graftStorage s s') h))
+  liftIO . writeIORef ref $ SystemState i' (graftStorage s s') h
+  pure (b, a)
 
 
 ------------------------------------------------------------------------------
 -- | Retrieve a unique 'Ent'.
 nextEntity
-    :: Monad m
+    :: (Monad m, MonadIO m)
     => SystemT a m Ent
 nextEntity = do
-  e <- SystemT $ S.gets _ssNextId
-  SystemT . modify $ ssNextId .~ e + 1
+  e <- askingIO _ssNextId
+  modifyingIO $ ssNextId .~ e + 1
   pure $ Ent e
 
 
@@ -283,7 +290,7 @@ createEntity
     => world 'FieldOf
     -> SystemT world m Ent
 createEntity cs = do
-  h <- SystemT $ S.gets _ssHooks
+  h <- askingIO _ssHooks
   e <- nextEntity
   setEntity e $ convertSetter cs
   hookNewEnt h e
@@ -297,7 +304,7 @@ deleteEntity
     => Ent
     -> SystemT world m ()
 deleteEntity e = do
-  h <- SystemT $ S.gets _ssHooks
+  h <- askingIO _ssHooks
   hookDelEnt h e
   setEntity e delEntity
 
@@ -335,6 +342,7 @@ emap t f = do
 efor
     :: ( HasWorld world m
        , Monad m
+       , MonadIO m
        )
     => EntTarget world m
     -> QueryT world m a
@@ -350,6 +358,7 @@ efor t f = do
 -- | Do an 'emap' and an 'efor' at the same time.
 eover
     :: ( HasWorld world m
+       , MonadIO m
        , Monad m
        )
     => EntTarget world m
@@ -370,6 +379,7 @@ eover t f = do
 runQueryT
     :: ( HasWorld world m
        , Monad m
+       , MonadIO m
        )
     => Ent
     -> QueryT world m a
@@ -379,38 +389,35 @@ runQueryT e qt = do
   lift $ unQueryT qt e cs
 
 
-getWorld :: Monad m => SystemT world m (world ('WorldOf m))
-getWorld = SystemT $ gets _ssWorld
+getWorld :: (MonadIO m, Monad m) => SystemT world m (world ('WorldOf m))
+getWorld = askingIO _ssWorld
 
 
 ------------------------------------------------------------------------------
 -- | Provides a resumable 'SystemT'. This is a pretty big hack until I come up
 -- with a better formalization for everything.
 yieldSystemT
-    :: Monad m
+    :: (MonadIO m, Monad m)
     => SystemState world m
     -> SystemT world m a
     -> m (SystemState world m, a)
-yieldSystemT w = fmap swap . flip S.runStateT w . runSystemT'
+yieldSystemT ss m = do
+  ref <- liftIO $ newIORef ss
+  a <- runReaderT (runSystemT' m) ref
+  ss' <- liftIO $ readIORef ref
+  pure (ss', a)
 
 
 ------------------------------------------------------------------------------
 -- | Evaluate a 'SystemT'.
 runSystemT
-    :: Monad m
+    :: (Monad m, MonadIO m)
     => world ('WorldOf m)
     -> SystemT world m a
     -> m a
-runSystemT w = flip evalStateT (SystemState 0 w defHooks) . runSystemT'
-
-
-------------------------------------------------------------------------------
--- | Evaluate a 'System'.
-runSystem
-    :: world ('WorldOf Identity)
-    -> System world a
-    -> a
-runSystem = (runIdentity .) . runSystemT
+runSystemT w m = do
+  ref <- liftIO . newIORef $ SystemState 0 w defHooks
+  runReaderT (runSystemT' m) ref
 
 
 ------------------------------------------------------------------------------
@@ -514,11 +521,26 @@ queryDef z = fmap (maybe z id) . queryMaybe @_ @c
 type EntTarget world m = SystemT world m [Ent]
 
 
+askingIO :: (Monad m, MonadIO m) => (SystemState world m -> a) -> SystemT world m a
+askingIO f = do
+  ref <- SystemT ask
+  ss <- liftIO $ readIORef ref
+  pure $ f ss
+
+modifyingIO
+    :: (Monad m, MonadIO m)
+    => (SystemState world m -> SystemState world m)
+    -> SystemT world m ()
+modifyingIO f = do
+  ref <- SystemT ask
+  liftIO $ modifyIORef ref f
+
+
 ------------------------------------------------------------------------------
 -- | Iterate over all entities.
-allEnts :: Monad m => EntTarget world m
+allEnts :: (MonadIO m, Monad m) => EntTarget world m
 allEnts = do
-  es <- SystemT $ gets _ssNextId
+  es <- askingIO _ssNextId
   pure $ Ent <$> [0 .. es - 1]
 
 
