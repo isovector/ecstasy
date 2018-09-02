@@ -171,9 +171,19 @@ type family Component (s :: StorageType)
   Component ('WorldOf m) 'Unique  a = Maybe (Int, a)
   Component ('WorldOf m) 'Virtual a = VTable m a
 
-type family FuckYou (m :: Type -> Type)
-                    (r :: Type) = (c :: ComponentType) where
-  FuckYou m (IntMap a) = 'Field
-  FuckYou m (Maybe (Int, a)) = 'Unique
-  FuckYou m (VTable m a) = 'Virtual
+
+------------------------------------------------------------------------------
+-- | The inverse of 'Component ('WorldOf m)' -- used to prove 'IsInjective'
+type family Inverse (m :: Type -> Type)
+                    (r :: Type) :: ComponentType where
+  Inverse m (IntMap a)       = 'Field
+  Inverse m (Maybe (Int, a)) = 'Unique
+  Inverse m (VTable m a)     = 'Virtual
+
+------------------------------------------------------------------------------
+-- | A proof that 'c' is injective.
+class (c ~ Inverse m (Component ('WorldOf m) c a))
+    => IsInjective m (c :: ComponentType) a
+instance (c ~ Inverse m (Component ('WorldOf m) c a))
+    => IsInjective m (c :: ComponentType) a
 

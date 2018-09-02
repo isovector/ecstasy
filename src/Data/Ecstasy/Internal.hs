@@ -416,9 +416,10 @@ runSystem = (runIdentity .) . runSystemT
 ------------------------------------------------------------------------------
 -- | Only evaluate this 'QueryT' for entities which have the given component.
 with
-    :: forall m c a world. ( Monad m
-       , GGGetEntity c
-       , c ~ FuckYou m (Component ('WorldOf m) c a)
+    :: forall m c a world
+     . ( Monad m
+       , GetField c
+       , IsInjective m c a
        )
     => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m ()
@@ -430,9 +431,10 @@ with = void . query @_ @c @a
 -- | Only evaluate this 'QueryT' for entities which do not have the given
 -- component.
 without
-    :: forall m c a world. ( Monad m
-       , GGGetEntity c
-       , c ~ FuckYou m (Component ('WorldOf m) c a)
+    :: forall m c a world
+     . ( Monad m
+       , GetField c
+       , IsInjective m c a
        )
     => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m ()
@@ -445,9 +447,10 @@ without f = do
 ------------------------------------------------------------------------------
 -- | Get the value of a component, failing the 'QueryT' if it isn't present.
 query
-    :: forall m c a world. ( Monad m
-       , GGGetEntity c
-       , c ~ FuckYou m (Component ('WorldOf m) c a)
+    :: forall m c a world
+     . ( Monad m
+       , GetField c
+       , IsInjective m c a
        )
     => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m a
@@ -460,9 +463,10 @@ query f = do
 ------------------------------------------------------------------------------
 -- | Attempt to get the value of a component.
 queryMaybe
-    :: forall m c a world. ( Monad m
-       , GGGetEntity c
-       , c ~ FuckYou m (Component ('WorldOf m) c a)
+    :: forall m c a world
+     . ( Monad m
+       , GetField c
+       , IsInjective m c a
        )
     => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m (Maybe a)
@@ -482,9 +486,10 @@ queryEnt = QueryT $ asks fst
 ------------------------------------------------------------------------------
 -- | Query a flag as a 'Bool'.
 queryFlag
-    :: forall m c a world. ( Monad m
-       , GGGetEntity c
-       , c ~ FuckYou m (Component ('WorldOf m) c a)
+    :: forall m c a world
+     . ( Monad m
+       , GetField c
+       , IsInjective m c a
        )
     => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m Bool
@@ -495,8 +500,8 @@ queryFlag = fmap (maybe False (const True)) . queryMaybe @_ @c @a
 -- | Perform a query with a default.
 queryDef
     :: forall m c a world. ( Monad m
-       , GGGetEntity c
-       , c ~ FuckYou m (Component ('WorldOf m) c a)
+       , GetField c
+       , IsInjective m c a
        )
     => a
     -> (world ('WorldOf m) -> Component ('WorldOf m) c a)
