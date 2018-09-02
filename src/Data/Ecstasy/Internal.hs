@@ -417,8 +417,7 @@ runSystem = (runIdentity .) . runSystemT
 -- | Only evaluate this 'QueryT' for entities which have the given component.
 with
     :: forall m c a world. ( Monad m
-       , Generic (Component ('WorldOf m) c a)
-       , GGetEntity m (Rep (Component ('WorldOf m) c a)) (Rep (Maybe a))
+       , GGGetEntity c
        , c ~ FuckYou m (Component ('WorldOf m) c a)
        )
     => (world ('WorldOf m) -> Component ('WorldOf m) c a)
@@ -432,53 +431,44 @@ with = void . query @_ @c @a
 -- component.
 without
     :: forall m c a world. ( Monad m
-       , Generic (Component ('WorldOf m) c a)
-       , GGetEntity m (Rep (Component ('WorldOf m) c a)) (Rep (Maybe a))
+       , GGGetEntity c
        , c ~ FuckYou m (Component ('WorldOf m) c a)
        )
     => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m ()
 without f = do
   (Ent e, w) <- QueryT ask
-  z <- lift . lowerCodensity
-            . fmap to
-            $ gGetEntity @_ @_ @(Rep (Maybe a)) (from $ f w) e
+  z <- lift $ ggGetEntity @c @m @a (f w) e
   maybe (pure ()) (const empty) z
 
 
 ------------------------------------------------------------------------------
 -- | Get the value of a component, failing the 'QueryT' if it isn't present.
 query
-    :: ( Monad m
-       , Generic (Component ('WorldOf m) c a)
-       , GGetEntity m (Rep (Component ('WorldOf m) c a)) (Rep (Maybe a))
+    :: forall m c a world. ( Monad m
+       , GGGetEntity c
        , c ~ FuckYou m (Component ('WorldOf m) c a)
        )
     => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m a
 query f = do
   (Ent e, w) <- QueryT ask
-  z <- lift . lowerCodensity
-            . fmap to
-            $ gGetEntity (from $ f w) e
+  z <- lift $ ggGetEntity @c @m (f w) e
   maybe empty pure z
 
 
 ------------------------------------------------------------------------------
 -- | Attempt to get the value of a component.
 queryMaybe
-    :: ( Monad m
-       , Generic (Component ('WorldOf m) c a)
-       , GGetEntity m (Rep (Component ('WorldOf m) c a)) (Rep (Maybe a))
+    :: forall m c a world. ( Monad m
+       , GGGetEntity c
        , c ~ FuckYou m (Component ('WorldOf m) c a)
        )
     => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m (Maybe a)
 queryMaybe f = do
   (Ent e, w) <- QueryT ask
-  lift . lowerCodensity
-       . fmap to
-       $ gGetEntity (from $ f w) e
+  lift $ ggGetEntity @c @m (f w) e
 
 
 ------------------------------------------------------------------------------
@@ -493,8 +483,7 @@ queryEnt = QueryT $ asks fst
 -- | Query a flag as a 'Bool'.
 queryFlag
     :: forall m c a world. ( Monad m
-       , Generic (Component ('WorldOf m) c a)
-       , GGetEntity m (Rep (Component ('WorldOf m) c a)) (Rep (Maybe a))
+       , GGGetEntity c
        , c ~ FuckYou m (Component ('WorldOf m) c a)
        )
     => (world ('WorldOf m) -> Component ('WorldOf m) c a)
@@ -506,8 +495,7 @@ queryFlag = fmap (maybe False (const True)) . queryMaybe @_ @c @a
 -- | Perform a query with a default.
 queryDef
     :: forall m c a world. ( Monad m
-       , Generic (Component ('WorldOf m) c a)
-       , GGetEntity m (Rep (Component ('WorldOf m) c a)) (Rep (Maybe a))
+       , GGGetEntity c
        , c ~ FuckYou m (Component ('WorldOf m) c a)
        )
     => a

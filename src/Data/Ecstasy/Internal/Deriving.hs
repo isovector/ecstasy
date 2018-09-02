@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances         #-}
 {-# LANGUAGE KindSignatures            #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE NamedFieldPuns            #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
@@ -14,7 +15,7 @@ module Data.Ecstasy.Internal.Deriving where
 
 import           Control.Monad.Codensity
 import           Control.Monad.Trans.Class (MonadTrans (..))
-import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..), Hooks, defHooks)
+import           Data.Ecstasy.Types (Update (..), VTable (..), Ent (..), Hooks, defHooks, Component, ComponentType(..), StorageType(..))
 import           Data.IntMap (IntMap)
 import qualified Data.IntMap as I
 import           Data.Proxy (Proxy (..))
@@ -130,6 +131,21 @@ instance (Applicative m, GGetEntity m a c, GGetEntity m b d)
     => GGetEntity m (a :*: b) (c :*: d) where
   gGetEntity (a :*: b) e = (:*:) <$> gGetEntity a e <*> gGetEntity b e
   {-# INLINE gGetEntity #-}
+
+class GGGetEntity (c :: ComponentType) where
+  ggGetEntity :: Monad m => Component ('WorldOf m) c a -> Int -> m (Maybe a)
+
+instance GGGetEntity 'Field where
+  ggGetEntity c i = pure $ I.lookup i c
+
+instance GGGetEntity 'Unique where
+  ggGetEntity c i = pure $ c >>= \(i', a) ->
+    case i == i' of
+      True  -> Just a
+      False -> Nothing
+
+instance GGGetEntity 'Virtual where
+  ggGetEntity VTable{vget} i = vget $ Ent i
 
 
 ------------------------------------------------------------------------------
