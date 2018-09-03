@@ -136,19 +136,23 @@ instance (Applicative m, GGetEntity m a c, GGetEntity m b d)
 ------------------------------------------------------------------------------
 -- | Utility class for implementing 'Data.Ecstasy.Internal.query'
 class GetField (c :: ComponentType) where
-  ggGetEntity :: Monad m => Component ('WorldOf m) c a -> Int -> m (Maybe a)
+  getField
+      :: Monad m
+      => Component ('WorldOf m) c a
+      -> Int
+      -> m (Maybe a)
 
 instance GetField 'Field where
-  ggGetEntity c i = pure $ I.lookup i c
+  getField c i = pure $ I.lookup i c
 
 instance GetField 'Unique where
-  ggGetEntity c i = pure $ c >>= \(i', a) ->
+  getField c i = pure $ c >>= \(i', a) ->
     case i == i' of
       True  -> Just a
       False -> Nothing
 
 instance GetField 'Virtual where
-  ggGetEntity VTable{vget} i = vget $ Ent i
+  getField VTable{vget} i = vget $ Ent i
 
 
 ------------------------------------------------------------------------------

@@ -1,5 +1,12 @@
 # Revision history for ecstasy
 
+## 0.3.0.0  -- unreleased
+
+* Replace 'State s' with 'ReaderT (IORef s) IO', resulting in significantly less
+    allocations.
+* Perform static analysis of 'QueryT's to avoid evaluating them on irrelevant
+    entities.
+
 ## 0.2.1.0  -- 2018-05-15
 
 * Added the 'surgery' function to introduce temporary effects.

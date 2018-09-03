@@ -22,7 +22,7 @@ import           Control.Monad.Codensity (lowerCodensity)
 import           Control.Monad.IO.Class (MonadIO (..))
 import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Control.Monad.Trans.Maybe (runMaybeT)
-import           Control.Monad.Trans.Reader (ReaderT (..), ask, asks)
+import qualified Control.Monad.Trans.Reader as R
 import           Data.Ecstasy.Internal.Deriving
 import qualified Data.Ecstasy.Types as T
 import           Data.Ecstasy.Types hiding (unEnt)
@@ -86,7 +86,7 @@ class (Monad m, MonadIO m, HasWorld' world) => HasWorld world m where
               . fmap to
               . gSetEntity (from s) (T.unEnt e)
               $ from w
-    modifyingIO $ ssWorld .~ x
+    modify $ ssWorld .~ x
   {-# INLINE setEntity #-}
 
   ----------------------------------------------------------------------------
@@ -260,7 +260,7 @@ surgery
     => (forall x. t m x -> m (x, b))
     -> SystemT world (t m) a
     -> SystemT world m (b, a)
-surgery f m = SystemT $ ReaderT $ \ref -> do
+surgery f m = SystemT $ R.ReaderT $ \ref -> do
   SystemState i s h <- liftIO $ readIORef ref
   ((SystemState i' s' _, a), b) <-
     f $ yieldSystemT (SystemState i (hoistStorage s) defHooks) m
@@ -274,8 +274,8 @@ nextEntity
     :: (Monad m, MonadIO m)
     => SystemT a m Ent
 nextEntity = do
-  e <- askingIO _ssNextId
-  modifyingIO $ ssNextId .~ e + 1
+  e <- gets _ssNextId
+  modify $ ssNextId .~ e + 1
   pure $ Ent e
 
 
@@ -286,7 +286,7 @@ createEntity
     => world 'FieldOf
     -> SystemT world m Ent
 createEntity cs = do
-  h <- askingIO _ssHooks
+  h <- gets _ssHooks
   e <- nextEntity
   setEntity e $ convertSetter cs
   hookNewEnt h e
@@ -300,7 +300,7 @@ deleteEntity
     => Ent
     -> SystemT world m ()
 deleteEntity e = do
-  h <- askingIO _ssHooks
+  h <- gets _ssHooks
   hookDelEnt h e
   setEntity e delEntity
 
@@ -312,7 +312,7 @@ unQueryT
   -> Ent
   -> world ('WorldOf m)
   -> m (Maybe a)
-unQueryT q e f = runMaybeT $ flip runReaderT (e, f) $ runQueryT' q
+unQueryT q e f = runMaybeT $ flip R.runReaderT (e, f) $ runQueryT' q
 
 
 ------------------------------------------------------------------------------
@@ -386,7 +386,7 @@ runQueryT e qt = do
 
 
 getWorld :: (MonadIO m, Monad m) => SystemT world m (world ('WorldOf m))
-getWorld = askingIO _ssWorld
+getWorld = gets _ssWorld
 
 
 ------------------------------------------------------------------------------
@@ -399,7 +399,7 @@ yieldSystemT
     -> m (SystemState world m, a)
 yieldSystemT ss m = do
   ref <- liftIO $ newIORef ss
-  a <- runReaderT (runSystemT' m) ref
+  a <- R.runReaderT (runSystemT' m) ref
   ss' <- liftIO $ readIORef ref
   pure (ss', a)
 
@@ -413,7 +413,7 @@ runSystemT
     -> m a
 runSystemT w m = do
   ref <- liftIO . newIORef $ SystemState 0 w defHooks
-  runReaderT (runSystemT' m) ref
+  R.runReaderT (runSystemT' m) ref
 
 
 ------------------------------------------------------------------------------
@@ -426,7 +426,7 @@ with
        )
     => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m ()
-with = void . query @_ @c @a
+with = void . query @c @a
 {-# INLINE with #-}
 
 
@@ -441,32 +441,26 @@ without
        )
     => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m ()
-without f = do
-  (Ent e, w) <- QueryT ask
-  z <- lift $ ggGetEntity @c @m @a (f w) e
-  maybe (pure ()) (const empty) z
+without f = queryMaybe @c @a f >>= maybe (pure ()) (const empty)
 
 
 ------------------------------------------------------------------------------
 -- | Get the value of a component, failing the 'QueryT' if it isn't present.
 query
-    :: forall m c a world
+    :: forall c a m world
      . ( Monad m
        , GetField c
        , IsInjective m c a
        )
     => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m a
-query f = do
-  (Ent e, w) <- QueryT ask
-  z <- lift $ ggGetEntity @c @m (f w) e
-  maybe empty pure z
+query f = queryMaybe f >>= maybe empty pure
 
 
 ------------------------------------------------------------------------------
 -- | Attempt to get the value of a component.
 queryMaybe
-    :: forall m c a world
+    :: forall c a m world
      . ( Monad m
        , GetField c
        , IsInjective m c a
@@ -474,8 +468,8 @@ queryMaybe
     => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m (Maybe a)
 queryMaybe f = do
-  (Ent e, w) <- QueryT ask
-  lift $ ggGetEntity @c @m (f w) e
+  (Ent e, w) <- QueryT R.ask
+  lift $ getField @c (f w) e
 
 
 ------------------------------------------------------------------------------
@@ -483,7 +477,7 @@ queryMaybe f = do
 queryEnt
     :: Monad m
     => QueryT world m Ent
-queryEnt = QueryT $ asks fst
+queryEnt = QueryT $ R.asks fst
 
 
 ------------------------------------------------------------------------------
@@ -496,7 +490,7 @@ queryFlag
        )
     => (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m Bool
-queryFlag = fmap (maybe False (const True)) . queryMaybe @_ @c @a
+queryFlag = fmap (maybe False (const True)) . queryMaybe @c @a
 
 
 ------------------------------------------------------------------------------
@@ -509,7 +503,7 @@ queryDef
     => a
     -> (world ('WorldOf m) -> Component ('WorldOf m) c a)
     -> QueryT world m a
-queryDef z = fmap (maybe z id) . queryMaybe @_ @c
+queryDef z = fmap (maybe z id) . queryMaybe @c
 
 
 ------------------------------------------------------------------------------
@@ -517,18 +511,26 @@ queryDef z = fmap (maybe z id) . queryMaybe @_ @c
 type EntTarget world m = SystemT world m [Ent]
 
 
-askingIO :: (Monad m, MonadIO m) => (SystemState world m -> a) -> SystemT world m a
-askingIO f = do
-  ref <- SystemT ask
+------------------------------------------------------------------------------
+-- | Lifted 'gets' for 'SystemT'.
+gets
+    :: (Monad m, MonadIO m)
+    => (SystemState world m -> a)
+    -> SystemT world m a
+gets f = do
+  ref <- SystemT R.ask
   ss <- liftIO $ readIORef ref
   pure $ f ss
 
-modifyingIO
+
+------------------------------------------------------------------------------
+-- | Lifted 'modify' for 'SystemT'.
+modify
     :: (Monad m, MonadIO m)
     => (SystemState world m -> SystemState world m)
     -> SystemT world m ()
-modifyingIO f = do
-  ref <- SystemT ask
+modify f = do
+  ref <- SystemT R.ask
   liftIO $ modifyIORef ref f
 
 
@@ -536,7 +538,7 @@ modifyingIO f = do
 -- | Iterate over all entities.
 allEnts :: (MonadIO m, Monad m) => EntTarget world m
 allEnts = do
-  es <- askingIO _ssNextId
+  es <- gets _ssNextId
   pure $ Ent <$> [0 .. es - 1]
 
 
