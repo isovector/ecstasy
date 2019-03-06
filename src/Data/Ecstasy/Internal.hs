@@ -23,6 +23,7 @@ import           Control.Monad.IO.Class (MonadIO (..))
 import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Control.Monad.Trans.Maybe (runMaybeT)
 import qualified Control.Monad.Trans.Reader as R
+import           Control.Parallel.Strategies
 import           Data.Ecstasy.Internal.Deriving
 import qualified Data.Ecstasy.Types as T
 import           Data.Ecstasy.Types hiding (unEnt)
@@ -326,10 +327,12 @@ emap
     -> SystemT world m ()
 emap t f = do
   es <- t
-  for_ es $ \e -> do
-    cs <- getWorld
-    sets <- lift $ unQueryT f e cs
-    for_ sets $ setEntity e
+  void $ sequence (withStrategy (parTraversable rpar) (fmap
+    (\e -> do
+      cs <- getWorld
+      sets <- lift $ unQueryT f e cs
+      (for_ sets $ setEntity e)
+      ) es))
 
 
 ------------------------------------------------------------------------------
@@ -345,9 +348,11 @@ efor
     -> SystemT world m [a]
 efor t f = do
   es <- t
-  fmap catMaybes $ for es $ \e -> do
-    cs <- getWorld
-    lift $ unQueryT f e cs
+  catMaybes <$> sequence (withStrategy (parTraversable rpar) (fmap
+    (\e -> do
+      cs <- getWorld
+      lift $ unQueryT f e cs
+      ) es))
 
 
 ------------------------------------------------------------------------------
@@ -362,12 +367,15 @@ eover
     -> SystemT world m [a]
 eover t f = do
   es <- t
-  fmap catMaybes $ for es $ \e -> do
-    cs <- getWorld
-    mset <- lift $ unQueryT f e cs
-    for mset $ \(a, setter) -> do
-      setEntity e setter
-      pure a
+  catMaybes <$> sequence (withStrategy (parTraversable rpar) (fmap
+    (\e -> do
+      cs <- getWorld
+      mset <- lift $ unQueryT f e cs
+      (for mset $ \(a, setter) -> do
+        setEntity e setter
+        return a
+        )
+      ) es))
 
 
 ------------------------------------------------------------------------------
