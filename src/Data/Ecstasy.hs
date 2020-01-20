@@ -81,6 +81,7 @@ module Data.Ecstasy
   , with
   , without
   , queryEnt
+  , queryUnique
   , querySelf
   , queryMaybe
   , queryFlag

@@ -475,6 +475,18 @@ queryMaybe f = do
 
 
 ------------------------------------------------------------------------------
+-- | Attempt to get the owner and value of a unique component.
+queryUnique
+    :: ( Monad m
+       )
+    => (world ('WorldOf m) -> Component ('WorldOf m) 'Unique a)
+    -> QueryT world m (Maybe (Ent, a))
+queryUnique f = do
+  (_, w) <- QueryT R.ask
+  pure $ coerce $ f w
+
+
+------------------------------------------------------------------------------
 -- | Get the 'Ent' for whom this query is running.
 queryEnt
     :: Monad m
