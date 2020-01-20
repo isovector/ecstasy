@@ -21,13 +21,15 @@ import           Control.Monad (void)
 import           Control.Monad.Codensity (lowerCodensity)
 import           Control.Monad.IO.Class (MonadIO (..))
 import           Control.Monad.Trans.Class (MonadTrans (..))
-import           Control.Monad.Trans.Maybe (runMaybeT)
+import           Control.Monad.Trans.Maybe (runMaybeT, MaybeT (..))
 import qualified Control.Monad.Trans.Reader as R
+import           Data.Coerce
 import           Data.Ecstasy.Internal.Deriving
 import qualified Data.Ecstasy.Types as T
 import           Data.Ecstasy.Types hiding (unEnt)
 import           Data.Foldable (for_)
 import           Data.IORef
+import qualified Data.IntMap as IM
 import           Data.Maybe (catMaybes)
 import           Data.Traversable (for)
 import           GHC.Generics
@@ -481,6 +483,15 @@ queryEnt = QueryT $ R.asks fst
 
 
 ------------------------------------------------------------------------------
+-- | Get the 'Ent' for whom this query is running.
+querySelf
+    :: (MonadIO m, HasWorld world m)
+    => QueryT world m (world 'FieldOf)
+querySelf = QueryT $ R.ReaderT $ \(e, w) ->
+  MaybeT $ fmap Just $ runSystemT w $ getEntity e
+
+
+------------------------------------------------------------------------------
 -- | Query a flag as a 'Bool'.
 queryFlag
     :: forall m c a world
@@ -539,7 +550,30 @@ modify f = do
 allEnts :: (MonadIO m, Monad m) => EntTarget world m
 allEnts = do
   es <- gets _ssNextId
-  pure $ Ent <$> [0 .. es - 1]
+  pure $ coerce [0 .. es - 1]
+
+
+entsWith
+  :: (MonadIO m, Monad m)
+  => (world ('WorldOf m) -> Component ('WorldOf m) 'Field a)
+  -> EntTarget world m
+entsWith f = do
+  es <- gets $ IM.keys . f . _ssWorld
+  pure $ coerce es
+
+
+------------------------------------------------------------------------------
+-- | Target the entity uniquely identified by owning a 'Unique' field.
+uniqueEnt
+  :: ( GetField c
+     , Monad m
+     , MonadIO m
+     )
+  => (world ('WorldOf m) -> Component ('WorldOf m) 'Unique a)
+  -> EntTarget world m
+uniqueEnt f = do
+  es <- gets $ f . _ssWorld
+  pure $ maybe [] (pure . coerce . fst) es
 
 
 ------------------------------------------------------------------------------

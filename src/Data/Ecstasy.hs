@@ -65,8 +65,10 @@ module Data.Ecstasy
   -- * Entity targets
   , EntTarget
   , allEnts
+  , uniqueEnt
   , someEnts
   , anEnt
+  , entsWith
 
   -- * The QueryT monad
   -- $queryt
@@ -79,6 +81,7 @@ module Data.Ecstasy
   , with
   , without
   , queryEnt
+  , querySelf
   , queryMaybe
   , queryFlag
   , queryDef
