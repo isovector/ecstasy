@@ -19,6 +19,7 @@ module Data.Ecstasy.Types where
 
 import Control.Applicative (Alternative)
 import Control.Monad (MonadPlus)
+import Control.Monad.Fail (MonadFail)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader.Class (MonadReader (..))
 import Control.Monad.State.Class (MonadState (..))
@@ -107,6 +108,7 @@ newtype QueryT w m a = QueryT
            , MonadIO
            , Alternative
            , MonadPlus
+           , MonadFail
            )
 
 instance MonadTrans (QueryT w) where
