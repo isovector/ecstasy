@@ -312,7 +312,7 @@ deleteEntity e = do
 unQueryT
   :: QueryT world m a
   -> Ent
-  -> world ('WorldOf m)
+  -> SystemState world m
   -> m (Maybe a)
 unQueryT q e f = runMaybeT $ flip R.runReaderT (e, f) $ runQueryT' q
 
@@ -327,9 +327,10 @@ emap
     -> QueryT world m (world 'SetterOf)
     -> SystemT world m ()
 emap t f = do
-  es <- t
+  world <- gets id
+  let es = t world
   for_ es $ \e -> do
-    cs <- getWorld
+    cs <- gets id
     sets <- lift $ unQueryT f e cs
     for_ sets $ setEntity e
 
@@ -346,9 +347,10 @@ efor
     -> QueryT world m a
     -> SystemT world m [a]
 efor t f = do
-  es <- t
+  world <- gets id
+  let es = t world
   fmap catMaybes $ for es $ \e -> do
-    cs <- getWorld
+    cs <- gets id
     lift $ unQueryT f e cs
 
 
@@ -363,9 +365,10 @@ eover
     -> QueryT world m (a, world 'SetterOf)
     -> SystemT world m [a]
 eover t f = do
-  es <- t
+  world <- gets id
+  let es = t world
   fmap catMaybes $ for es $ \e -> do
-    cs <- getWorld
+    cs <- gets id
     mset <- lift $ unQueryT f e cs
     for mset $ \(a, setter) -> do
       setEntity e setter
@@ -383,7 +386,7 @@ runQueryT
     -> QueryT world m a
     -> SystemT world m (Maybe a)
 runQueryT e qt = do
-  cs <- getWorld
+  cs <- gets id
   lift $ unQueryT qt e cs
 
 
@@ -459,6 +462,31 @@ query
 query f = queryMaybe f >>= maybe empty pure
 
 
+queryTarget
+    :: Monad m
+    => EntTarget world m
+    -> QueryT world m [Ent]
+queryTarget t = do
+  (_, w) <- QueryT R.ask
+  pure $ t w
+
+------------------------------------------------------------------------------
+-- | Run a subquery inside of a 'QueryT'.
+subquery
+    :: ( HasWorld world m
+       , Monad m
+       , MonadIO m
+       )
+    => EntTarget world m
+    -> QueryT world m a
+    -> QueryT world m [a]
+subquery t q = do
+  (_, w) <- QueryT R.ask
+  let es = t w
+  fmap catMaybes $ for es $ \e -> do
+    lift $ unQueryT q e w
+
+
 ------------------------------------------------------------------------------
 -- | Attempt to get the value of a component.
 queryMaybe
@@ -471,7 +499,7 @@ queryMaybe
     -> QueryT world m (Maybe a)
 queryMaybe f = do
   (Ent e, w) <- QueryT R.ask
-  lift $ getField @c (f w) e
+  lift $ getField @c (f $ _ssWorld w) e
 
 
 ------------------------------------------------------------------------------
@@ -483,7 +511,7 @@ queryUnique
     -> QueryT world m (Maybe (Ent, a))
 queryUnique f = do
   (_, w) <- QueryT R.ask
-  pure $ coerce $ f w
+  pure $ coerce $ f $ _ssWorld w
 
 
 ------------------------------------------------------------------------------
@@ -500,7 +528,7 @@ querySelf
     :: (MonadIO m, HasWorld world m)
     => QueryT world m (world 'FieldOf)
 querySelf = QueryT $ R.ReaderT $ \(e, w) ->
-  MaybeT $ fmap Just $ runSystemT w $ getEntity e
+  MaybeT $ fmap Just $ runSystemT (_ssWorld w) $ getEntity e
 
 
 ------------------------------------------------------------------------------
@@ -531,7 +559,7 @@ queryDef z = fmap (maybe z id) . queryMaybe @c
 
 ------------------------------------------------------------------------------
 -- | An 'EntTarget' is a set of 'Ent's to iterate over.
-type EntTarget world m = SystemT world m [Ent]
+type EntTarget world m = SystemState world m -> [Ent]
 
 
 ------------------------------------------------------------------------------
@@ -560,32 +588,25 @@ modify f = do
 ------------------------------------------------------------------------------
 -- | Iterate over all entities.
 allEnts :: (MonadIO m, Monad m) => EntTarget world m
-allEnts = do
-  es <- gets _ssNextId
-  pure $ coerce [0 .. es - 1]
+allEnts world = coerce [0 .. _ssNextId world - 1]
 
 
 entsWith
   :: (MonadIO m, Monad m)
   => (world ('WorldOf m) -> Component ('WorldOf m) 'Field a)
   -> EntTarget world m
-entsWith f = do
-  es <- gets $ IM.keys . f . _ssWorld
-  pure $ coerce es
+entsWith f = coerce . IM.keys . f . _ssWorld
 
 
 ------------------------------------------------------------------------------
 -- | Target the entity uniquely identified by owning a 'Unique' field.
 uniqueEnt
-  :: ( GetField c
-     , Monad m
+  :: ( Monad m
      , MonadIO m
      )
   => (world ('WorldOf m) -> Component ('WorldOf m) 'Unique a)
   -> EntTarget world m
-uniqueEnt f = do
-  es <- gets $ f . _ssWorld
-  pure $ maybe [] (pure . coerce . fst) es
+uniqueEnt f = maybe [] (pure . coerce . fst) . f . _ssWorld
 
 
 ------------------------------------------------------------------------------

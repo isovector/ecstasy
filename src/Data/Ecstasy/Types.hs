@@ -98,7 +98,7 @@ instance MonadReader r m => MonadReader r (SystemT w m) where
 ------------------------------------------------------------------------------
 -- | A computation to run over a particular entity.
 newtype QueryT w m a = QueryT
-  { runQueryT' :: ReaderT (Ent, w ('WorldOf m)) (MaybeT m) a
+  { runQueryT' :: ReaderT (Ent, SystemState w m) (MaybeT m) a
   }
   deriving ( Functor
            , Applicative

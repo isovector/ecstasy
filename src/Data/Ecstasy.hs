@@ -78,6 +78,7 @@ module Data.Ecstasy
   -- * Queries
   -- $querying
   , query
+  , subquery
   , with
   , without
   , queryEnt
@@ -86,6 +87,7 @@ module Data.Ecstasy
   , queryMaybe
   , queryFlag
   , queryDef
+  , queryTarget
 
   -- * Updates
   , Update (..)
